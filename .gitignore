@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+
+# Virtual environments
+venv/
+.env/
+
+# Large data files
+data/raw/
+database/
+
