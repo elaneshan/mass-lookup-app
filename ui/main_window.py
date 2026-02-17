@@ -1,11 +1,13 @@
 """
-Mass Lookup Tool - Main GUI Window v2
+Mass Lookup Tool - Main GUI Window v3
 ======================================
 
-Enhanced desktop application with:
-- Mass search with ion mode selection
+Full-featured desktop application with:
+- Mass search with expanded adduct support (H, Na, K, NH4)
 - Formula search
-- Multi-source database display
+- Database filter checkboxes
+- Source URL display (copyable)
+- Copy row to clipboard
 - CSV export
 
 Usage:
@@ -18,16 +20,47 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTableWidget, QTableWidgetItem,
     QGroupBox, QMessageBox, QHeaderView, QRadioButton, QButtonGroup,
-    QComboBox, QFileDialog
+    QComboBox, QFileDialog, QCheckBox, QAbstractItemView
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QColor
 
 from search.search_engine import SearchEngine
 
 
+# ─────────────────────────────────────────────
+#  ADDUCT DEFINITIONS
+# ─────────────────────────────────────────────
+
+ADDUCTS = {
+    # Label                   : (mass_delta, mode)
+    "Neutral (exact mass)"    : (0.0,        "neutral"),
+    "[M+H]⁺  (+1.00728)"     : (1.007276,   "positive"),
+    "[M+Na]⁺ (+22.98922)"    : (22.989218,  "positive"),
+    "[M+K]⁺  (+38.96316)"    : (38.963158,  "positive"),
+    "[M+NH4]⁺ (+18.03437)"   : (18.034374,  "positive"),
+    "[M-H]⁻  (-1.00728)"     : (-1.007276,  "negative"),
+    "[M+Cl]⁻ (+34.96940)"    : (34.969402,  "negative"),
+    "[M+FA-H]⁻ (+44.99820)"  : (44.998201,  "negative"),
+}
+
+# Source URL templates — shown as copyable text
+SOURCE_URLS = {
+    "HMDB"     : "https://hmdb.ca/metabolites/{id}",
+    "ChEBI"    : "https://www.ebi.ac.uk/chebi/searchId.do?chebiId={id}",
+    "LipidMaps": "https://www.lipidmaps.org/databases/lmsd/{id}",
+}
+
+# Source display colors for the table
+SOURCE_COLORS = {
+    "HMDB"     : QColor(220, 240, 255),   # Light blue
+    "ChEBI"    : QColor(220, 255, 220),   # Light green
+    "LipidMaps": QColor(255, 240, 220),   # Light orange
+}
+
+
 class MassLookupWindow(QMainWindow):
-    """Main application window for mass lookup tool."""
+    """Main application window — v3."""
 
     def __init__(self):
         super().__init__()
@@ -35,103 +68,87 @@ class MassLookupWindow(QMainWindow):
         # Initialize search engine
         try:
             self.search_engine = SearchEngine()
-            stats = self.search_engine.get_stats()
-            self.db_loaded = True
-            self.stats = stats
+            self.stats         = self.search_engine.get_stats()
+            self.db_loaded     = True
         except FileNotFoundError as e:
             self.db_loaded = False
-            self.stats = {}
-            QMessageBox.critical(
-                self,
-                "Database Error",
-                f"Could not load database:\n{str(e)}"
-            )
+            self.stats     = {}
+            QMessageBox.critical(self, "Database Error", str(e))
 
-        # Store last search results for export
-        self.last_results = []
+        self.last_results      = []
         self.last_search_params = {}
 
-        # Setup UI
         self.init_ui()
 
-        # Show database stats if loaded
         if self.db_loaded:
-            source_info = ", ".join([f"{src}: {count:,}" for src, count in self.stats['by_source'].items()])
-            self.update_status(f"Database loaded - {source_info}")
+            parts = [f"{src}: {cnt:,}" for src, cnt in self.stats["by_source"].items()]
+            self.update_status("Database loaded — " + " | ".join(parts))
+
+    # ─────────────────────────────────────────
+    #  UI CONSTRUCTION
+    # ─────────────────────────────────────────
 
     def init_ui(self):
-        """Initialize the user interface."""
+        self.setWindowTitle("LC-MS Mass Lookup Tool")
+        self.setGeometry(100, 100, 1350, 800)
 
-        # Window properties
-        self.setWindowTitle("LC-MS Mass Lookup Tool v2")
-        self.setGeometry(100, 100, 1200, 750)
+        central = QWidget()
+        self.setCentralWidget(central)
 
-        # Central widget
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        layout = QVBoxLayout()
+        central.setLayout(layout)
 
-        # Main layout
-        main_layout = QVBoxLayout()
-        central_widget.setLayout(main_layout)
-
-        # Add components
-        main_layout.addWidget(self.create_search_panel())
-        main_layout.addWidget(self.create_results_panel())
-        main_layout.addWidget(self.create_status_bar())
+        layout.addWidget(self.create_search_panel())
+        layout.addWidget(self.create_db_filter_panel())
+        layout.addWidget(self.create_results_panel())
+        layout.addWidget(self.create_status_bar())
 
     def create_search_panel(self):
-        """Create the enhanced search input panel."""
-
-        group = QGroupBox("Search Parameters")
+        group  = QGroupBox("Search Parameters")
         layout = QVBoxLayout()
 
-        # Search mode selection
+        # ── Search mode row ──────────────────
         mode_row = QHBoxLayout()
         mode_row.addWidget(QLabel("Search Mode:"))
 
-        self.mode_button_group = QButtonGroup()
-        self.mass_mode_radio = QRadioButton("Mass")
+        self.mode_group        = QButtonGroup()
+        self.mass_mode_radio   = QRadioButton("Mass")
         self.formula_mode_radio = QRadioButton("Formula")
         self.mass_mode_radio.setChecked(True)
-
-        self.mode_button_group.addButton(self.mass_mode_radio)
-        self.mode_button_group.addButton(self.formula_mode_radio)
-
-        # Connect to update UI when mode changes
+        self.mode_group.addButton(self.mass_mode_radio)
+        self.mode_group.addButton(self.formula_mode_radio)
         self.mass_mode_radio.toggled.connect(self.on_mode_changed)
 
         mode_row.addWidget(self.mass_mode_radio)
         mode_row.addWidget(self.formula_mode_radio)
         mode_row.addStretch()
-
         layout.addLayout(mode_row)
 
-        # Search input row (changes based on mode)
+        # ── Input row ────────────────────────
         input_row = QHBoxLayout()
 
-        # Mass input (shown when mass mode selected)
-        self.mass_label = QLabel("Target Mass (Da):")
+        # Mass inputs
+        self.mass_label = QLabel("Observed Mass (Da):")
         input_row.addWidget(self.mass_label)
 
         self.mass_input = QLineEdit()
-        self.mass_input.setPlaceholderText("e.g., 181.071 (observed mass)")
+        self.mass_input.setPlaceholderText("e.g., 181.071")
         self.mass_input.returnPressed.connect(self.perform_search)
         input_row.addWidget(self.mass_input)
 
-        # Tolerance (only for mass mode)
-        self.tolerance_label = QLabel("Tolerance (±):")
-        input_row.addWidget(self.tolerance_label)
+        self.tol_label = QLabel("Tolerance (±):")
+        input_row.addWidget(self.tol_label)
 
         self.tolerance_input = QLineEdit()
         self.tolerance_input.setText("0.5")
-        self.tolerance_input.setMaximumWidth(100)
+        self.tolerance_input.setMaximumWidth(80)
         self.tolerance_input.returnPressed.connect(self.perform_search)
         input_row.addWidget(self.tolerance_input)
 
-        self.tolerance_unit_label = QLabel("Da")
-        input_row.addWidget(self.tolerance_unit_label)
+        self.tol_unit_label = QLabel("Da")
+        input_row.addWidget(self.tol_unit_label)
 
-        # Formula input (shown when formula mode selected)
+        # Formula inputs (hidden by default)
         self.formula_label = QLabel("Molecular Formula:")
         self.formula_label.hide()
         input_row.addWidget(self.formula_label)
@@ -143,384 +160,380 @@ class MassLookupWindow(QMainWindow):
         input_row.addWidget(self.formula_input)
 
         input_row.addStretch()
-
         layout.addLayout(input_row)
 
-        # Ion mode row (only for mass searches)
-        ion_row = QHBoxLayout()
+        # ── Adduct row ───────────────────────
+        adduct_row = QHBoxLayout()
+        self.adduct_label = QLabel("Adduct / Ion Mode:")
+        adduct_row.addWidget(self.adduct_label)
 
-        self.ion_mode_label = QLabel("Ion Mode:")
-        ion_row.addWidget(self.ion_mode_label)
+        self.adduct_combo = QComboBox()
+        for label in ADDUCTS.keys():
+            self.adduct_combo.addItem(label)
+        self.adduct_combo.setMinimumWidth(250)
+        adduct_row.addWidget(self.adduct_combo)
+        adduct_row.addStretch()
+        layout.addLayout(adduct_row)
 
-        self.ion_mode_combo = QComboBox()
-        self.ion_mode_combo.addItems(["Neutral (exact mass)", "Positive [M+H]+", "Negative [M-H]-"])
-        self.ion_mode_combo.setMaximumWidth(200)
-        ion_row.addWidget(self.ion_mode_combo)
-
-        ion_row.addStretch()
-
-        layout.addLayout(ion_row)
-
-        # Button row
-        button_row = QHBoxLayout()
+        # ── Button row ───────────────────────
+        btn_row = QHBoxLayout()
 
         self.search_button = QPushButton("Search")
-        self.search_button.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; padding: 8px; font-weight: bold; }")
+        self.search_button.setStyleSheet(
+            "QPushButton { background-color: #4CAF50; color: white; "
+            "padding: 8px 20px; font-weight: bold; }"
+        )
         self.search_button.clicked.connect(self.perform_search)
-        button_row.addWidget(self.search_button)
+        btn_row.addWidget(self.search_button)
 
         self.clear_button = QPushButton("Clear")
         self.clear_button.clicked.connect(self.clear_search)
-        button_row.addWidget(self.clear_button)
+        btn_row.addWidget(self.clear_button)
+
+        self.copy_button = QPushButton("Copy Selected Row")
+        self.copy_button.clicked.connect(self.copy_selected_row)
+        self.copy_button.setEnabled(False)
+        btn_row.addWidget(self.copy_button)
 
         self.export_button = QPushButton("Export to CSV")
         self.export_button.clicked.connect(self.export_to_csv)
-        self.export_button.setEnabled(False)  # Disabled until results exist
-        button_row.addWidget(self.export_button)
+        self.export_button.setEnabled(False)
+        btn_row.addWidget(self.export_button)
 
-        button_row.addStretch()
+        btn_row.addStretch()
+        layout.addLayout(btn_row)
 
-        layout.addLayout(button_row)
+        group.setLayout(layout)
+        return group
 
+    def create_db_filter_panel(self):
+        """Database filter checkboxes."""
+        group  = QGroupBox("Database Filter  (uncheck to exclude a source)")
+        layout = QHBoxLayout()
+
+        self.db_checkboxes = {}
+        sources = list(self.stats.get("by_source", {}).keys()) or ["HMDB", "ChEBI", "LipidMaps"]
+
+        for source in sources:
+            count = self.stats.get("by_source", {}).get(source, 0)
+            cb    = QCheckBox(f"{source}  ({count:,})")
+            cb.setChecked(True)
+            self.db_checkboxes[source] = cb
+            layout.addWidget(cb)
+
+        layout.addStretch()
         group.setLayout(layout)
         return group
 
     def create_results_panel(self):
-        """Create the results table panel."""
-
-        group = QGroupBox("Results")
+        group  = QGroupBox("Results")
         layout = QVBoxLayout()
 
-        # Results table
         self.results_table = QTableWidget()
-        self.results_table.setColumnCount(7)
+        self.results_table.setColumnCount(8)
         self.results_table.setHorizontalHeaderLabels([
-            "Name", "Formula", "Exact Mass (Da)", "Error (Da)", "Error (ppm)", "Source", "Source ID"
+            "Name", "Formula", "Exact Mass (Da)",
+            "Error (Da)", "Error (ppm)", "Adduct", "Source", "Source URL"
         ])
 
-        # Table properties
-        self.results_table.setAlternatingRowColors(True)
+        self.results_table.setAlternatingRowColors(False)   # We use custom row colors
         self.results_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.results_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.results_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.results_table.itemSelectionChanged.connect(self.on_selection_changed)
 
-        # Column widths
-        header = self.results_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)  # Name
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Formula
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Mass
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Error Da
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Error ppm
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Source
-        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # ID
+        hdr = self.results_table.horizontalHeader()
+        hdr.setSectionResizeMode(0, QHeaderView.Stretch)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        hdr.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        hdr.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        hdr.setSectionResizeMode(6, QHeaderView.ResizeToContents)
+        hdr.setSectionResizeMode(7, QHeaderView.ResizeToContents)
 
         layout.addWidget(self.results_table)
-
         group.setLayout(layout)
         return group
 
     def create_status_bar(self):
-        """Create status bar."""
-
         self.status_label = QLabel("Ready")
         self.status_label.setStyleSheet("QLabel { padding: 5px; }")
         return self.status_label
 
+    # ─────────────────────────────────────────
+    #  MODE SWITCHING
+    # ─────────────────────────────────────────
+
     def on_mode_changed(self):
-        """Handle search mode change."""
+        mass_mode = self.mass_mode_radio.isChecked()
 
-        is_mass_mode = self.mass_mode_radio.isChecked()
+        for w in [self.mass_label, self.mass_input,
+                  self.tol_label, self.tolerance_input, self.tol_unit_label,
+                  self.adduct_label, self.adduct_combo]:
+            w.setVisible(mass_mode)
 
-        # Show/hide appropriate inputs
-        self.mass_label.setVisible(is_mass_mode)
-        self.mass_input.setVisible(is_mass_mode)
-        self.tolerance_label.setVisible(is_mass_mode)
-        self.tolerance_input.setVisible(is_mass_mode)
-        self.tolerance_unit_label.setVisible(is_mass_mode)
-        self.ion_mode_label.setVisible(is_mass_mode)
-        self.ion_mode_combo.setVisible(is_mass_mode)
+        for w in [self.formula_label, self.formula_input]:
+            w.setVisible(not mass_mode)
 
-        self.formula_label.setVisible(not is_mass_mode)
-        self.formula_input.setVisible(not is_mass_mode)
+        (self.mass_input if mass_mode else self.formula_input).setFocus()
 
-        # Focus appropriate input
-        if is_mass_mode:
-            self.mass_input.setFocus()
-        else:
-            self.formula_input.setFocus()
+    # ─────────────────────────────────────────
+    #  SEARCH
+    # ─────────────────────────────────────────
+
+    def get_selected_sources(self):
+        """Return list of checked database sources, or None (= all) if all checked."""
+        selected = [src for src, cb in self.db_checkboxes.items() if cb.isChecked()]
+        return selected if selected else None
 
     def perform_search(self):
-        """Execute the search based on selected mode."""
-
         if not self.db_loaded:
             QMessageBox.warning(self, "Database Error", "Database is not loaded.")
             return
 
-        # Determine search mode
         if self.mass_mode_radio.isChecked():
             self.perform_mass_search()
         else:
             self.perform_formula_search()
 
     def perform_mass_search(self):
-        """Execute mass search with ion mode."""
-
-        # Get inputs
         mass_text = self.mass_input.text().strip()
-        tolerance_text = self.tolerance_input.text().strip()
+        tol_text  = self.tolerance_input.text().strip()
 
-        # Validate
         if not mass_text:
             QMessageBox.warning(self, "Input Error", "Please enter a target mass.")
-            self.mass_input.setFocus()
             return
 
         try:
             target_mass = float(mass_text)
         except ValueError:
-            QMessageBox.warning(self, "Input Error", f"Invalid mass value: '{mass_text}'")
-            self.mass_input.setFocus()
+            QMessageBox.warning(self, "Input Error", f"Invalid mass: '{mass_text}'")
             return
 
         try:
-            tolerance = float(tolerance_text) if tolerance_text else 0.5
+            tolerance = float(tol_text) if tol_text else 0.5
         except ValueError:
-            QMessageBox.warning(self, "Input Error", f"Invalid tolerance: '{tolerance_text}'")
+            QMessageBox.warning(self, "Input Error", f"Invalid tolerance: '{tol_text}'")
             return
 
-        # Get ion mode
-        ion_mode_map = {
-            0: 'neutral',
-            1: 'positive',
-            2: 'negative'
-        }
-        ion_mode = ion_mode_map[self.ion_mode_combo.currentIndex()]
+        # Get adduct
+        adduct_label  = self.adduct_combo.currentText()
+        mass_delta, _ = ADDUCTS[adduct_label]
 
-        # Perform search
-        self.update_status(f"Searching for mass {target_mass} ± {tolerance} Da ({ion_mode} mode)...")
+        # Neutral mass = observed mass − adduct delta
+        neutral_mass  = target_mass - mass_delta
+
+        self.update_status(f"Searching {target_mass} Da  ({adduct_label})  ± {tolerance} Da...")
 
         try:
-            results = self.search_engine.search_by_mass(target_mass, tolerance, ion_mode)
-            self.last_results = results
+            source_filter = self.get_selected_sources()
+            results = self.search_engine.search_by_mass(
+                neutral_mass, tolerance, ion_mode='neutral',
+                source_filter=source_filter
+            )
+            # Tag each result with the adduct label and original observed mass
+            for r in results:
+                r['adduct']        = adduct_label
+                r['observed_mass'] = target_mass
+
+            self.last_results      = results
             self.last_search_params = {
-                'type': 'mass',
-                'mass': target_mass,
-                'tolerance': tolerance,
-                'ion_mode': ion_mode
+                'type': 'mass', 'observed_mass': target_mass,
+                'neutral_mass': neutral_mass, 'tolerance': tolerance,
+                'adduct': adduct_label
             }
-            self.display_mass_results(results, target_mass, tolerance, ion_mode)
+            self.display_results(results)
+            self.update_status(
+                f"Found {len(results):,} matches for {target_mass} Da "
+                f"({adduct_label}) ± {tolerance} Da"
+            )
         except Exception as e:
-            QMessageBox.critical(self, "Search Error", f"Error: {str(e)}")
-            self.update_status("Search failed")
+            QMessageBox.critical(self, "Search Error", str(e))
 
     def perform_formula_search(self):
-        """Execute formula search."""
-
-        # Get input
         formula = self.formula_input.text().strip()
 
         if not formula:
             QMessageBox.warning(self, "Input Error", "Please enter a molecular formula.")
-            self.formula_input.setFocus()
             return
 
-        # Perform search
         self.update_status(f"Searching for formula: {formula}...")
 
         try:
-            results = self.search_engine.search_by_formula(formula)
-            self.last_results = results
-            self.last_search_params = {
-                'type': 'formula',
-                'formula': formula
-            }
-            self.display_formula_results(results, formula)
+            source_filter = self.get_selected_sources()
+            results = self.search_engine.search_by_formula(formula, source_filter=source_filter)
+
+            for r in results:
+                r['adduct']       = "N/A"
+                r['mass_error']   = None
+                r['ppm_error']    = None
+                r['neutral_mass'] = r.get('exact_mass')
+
+            self.last_results      = results
+            self.last_search_params = {'type': 'formula', 'formula': formula}
+            self.display_results(results)
+            self.update_status(f"Found {len(results):,} matches for formula: {formula}")
         except Exception as e:
-            QMessageBox.critical(self, "Search Error", f"Error: {str(e)}")
-            self.update_status("Search failed")
+            QMessageBox.critical(self, "Search Error", str(e))
 
-    def display_mass_results(self, results, target_mass, tolerance, ion_mode):
-        """Display mass search results."""
+    # ─────────────────────────────────────────
+    #  DISPLAY
+    # ─────────────────────────────────────────
 
+    def build_source_url(self, source, source_id):
+        template = SOURCE_URLS.get(source)
+        if not template or not source_id:
+            return source_id or ""
+        return template.format(id=source_id)
+
+    def display_results(self, results):
         self.results_table.setRowCount(0)
 
         if not results:
-            self.update_status(f"No matches found for {target_mass} ± {tolerance} Da ({ion_mode})")
             self.export_button.setEnabled(False)
+            self.copy_button.setEnabled(False)
             return
 
         self.results_table.setRowCount(len(results))
+        row_color = QColor(255, 255, 255)
 
-        for row_idx, result in enumerate(results):
-            # Name
-            self.results_table.setItem(row_idx, 0, QTableWidgetItem(result['name']))
+        for i, r in enumerate(results):
+            source    = r.get('source', '')
+            source_id = r.get('source_id', '')
+            url       = self.build_source_url(source, source_id)
+            mass      = r.get('neutral_mass') or r.get('exact_mass', '')
+            err_da    = r.get('mass_error')
+            err_ppm   = r.get('ppm_error')
+            adduct    = r.get('adduct', '')
 
-            # Formula
-            self.results_table.setItem(row_idx, 1, QTableWidgetItem(result['formula']))
+            cells = [
+                r.get('name', ''),
+                r.get('formula', 'N/A'),
+                str(mass) if mass != '' else '',
+                str(err_da)  if err_da  is not None else '—',
+                str(err_ppm) if err_ppm is not None else '—',
+                adduct,
+                source,
+                url,
+            ]
 
-            # Exact Mass (neutral)
-            self.results_table.setItem(row_idx, 2, QTableWidgetItem(str(result['neutral_mass'])))
+            row_color = SOURCE_COLORS.get(source, QColor(255, 255, 255))
 
-            # Error (Da)
-            error_item = QTableWidgetItem(str(result['mass_error']))
-            error_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.results_table.setItem(row_idx, 3, error_item)
+            for j, text in enumerate(cells):
+                item = QTableWidgetItem(text)
+                item.setBackground(row_color)
+                item.setForeground(QColor(0, 0, 0))  # Always black text
+                if j == 7:  # URL column - dark blue italic but still readable
+                    item.setForeground(QColor(0, 60, 160))
+                    f = item.font()
+                    f.setItalic(True)
+                    item.setFont(f)
+                self.results_table.setItem(i, j, item)
 
-            # Error (ppm)
-            ppm_item = QTableWidgetItem(str(result['ppm_error']))
-            ppm_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.results_table.setItem(row_idx, 4, ppm_item)
-
-            # Source
-            self.results_table.setItem(row_idx, 5, QTableWidgetItem(result['source']))
-
-            # Source ID
-            self.results_table.setItem(row_idx, 6, QTableWidgetItem(result['source_id']))
-
-        self.update_status(f"Found {len(results):,} matches for {target_mass} ± {tolerance} Da ({ion_mode})")
         self.export_button.setEnabled(True)
+        self.copy_button.setEnabled(False)   # Enable only when row selected
 
-    def display_formula_results(self, results, formula):
-        """Display formula search results."""
+    # ─────────────────────────────────────────
+    #  COPY / EXPORT
+    # ─────────────────────────────────────────
 
-        self.results_table.setRowCount(0)
+    def on_selection_changed(self):
+        self.copy_button.setEnabled(bool(self.results_table.selectedItems()))
 
-        if not results:
-            self.update_status(f"No matches found for formula: {formula}")
-            self.export_button.setEnabled(False)
+    def copy_selected_row(self):
+        """Copy selected row as tab-separated text to clipboard."""
+        selected = self.results_table.selectedItems()
+        if not selected:
             return
 
-        self.results_table.setRowCount(len(results))
+        row    = self.results_table.currentRow()
+        cols   = self.results_table.columnCount()
+        parts  = [self.results_table.item(row, c).text() for c in range(cols)
+                  if self.results_table.item(row, c)]
 
-        for row_idx, result in enumerate(results):
-            # Name
-            self.results_table.setItem(row_idx, 0, QTableWidgetItem(result['name']))
-
-            # Formula
-            self.results_table.setItem(row_idx, 1, QTableWidgetItem(result['formula']))
-
-            # Exact Mass
-            self.results_table.setItem(row_idx, 2, QTableWidgetItem(str(result['exact_mass'])))
-
-            # Error columns - leave empty for formula search
-            self.results_table.setItem(row_idx, 3, QTableWidgetItem("—"))
-            self.results_table.setItem(row_idx, 4, QTableWidgetItem("—"))
-
-            # Source
-            self.results_table.setItem(row_idx, 5, QTableWidgetItem(result['source']))
-
-            # Source ID
-            self.results_table.setItem(row_idx, 6, QTableWidgetItem(result['source_id']))
-
-        self.update_status(f"Found {len(results):,} matches for formula: {formula}")
-        self.export_button.setEnabled(True)
+        QApplication.clipboard().setText('\t'.join(parts))
+        self.update_status(f"Row {row + 1} copied to clipboard")
 
     def export_to_csv(self):
-        """Export current results to CSV file."""
-
         if not self.last_results:
-            QMessageBox.warning(self, "Export Error", "No results to export.")
             return
 
-        # Get save file path
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export Results to CSV",
-            "mass_lookup_results.csv",
-            "CSV Files (*.csv)"
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export Results", "mass_lookup_results.csv", "CSV Files (*.csv)"
         )
-
-        if not file_path:
-            return  # User cancelled
+        if not path:
+            return
 
         try:
-            with open(file_path, 'w', newline='', encoding='utf-8') as f:
+            with open(path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
 
-                # Write header with search parameters
-                search_type = self.last_search_params.get('type', 'unknown')
-                if search_type == 'mass':
-                    writer.writerow([f"# Mass Search: {self.last_search_params['mass']} ± {self.last_search_params['tolerance']} Da ({self.last_search_params['ion_mode']} mode)"])
+                p = self.last_search_params
+                if p.get('type') == 'mass':
+                    writer.writerow([
+                        f"# Mass Search — Observed: {p['observed_mass']} Da | "
+                        f"Adduct: {p['adduct']} | "
+                        f"Neutral: {p['neutral_mass']:.4f} Da | "
+                        f"Tolerance: ±{p['tolerance']} Da"
+                    ])
                 else:
-                    writer.writerow([f"# Formula Search: {self.last_search_params['formula']}"])
+                    writer.writerow([f"# Formula Search — {p.get('formula', '')}"])
 
-                writer.writerow([])  # Blank line
+                writer.writerow([])
+                writer.writerow([
+                    "Name", "Formula", "Exact Mass (Da)", "Error (Da)",
+                    "Error (ppm)", "Adduct", "Source Database", "Source ID", "Source URL"
+                ])
 
-                # Column headers
-                if search_type == 'mass':
-                    writer.writerow(['Name', 'Formula', 'Neutral Mass (Da)', 'Mass Error (Da)', 'PPM Error', 'Source Database', 'Source ID'])
+                for r in self.last_results:
+                    source    = r.get('source', '')
+                    source_id = r.get('source_id', '')
+                    writer.writerow([
+                        r.get('name', ''),
+                        r.get('formula', ''),
+                        r.get('neutral_mass') or r.get('exact_mass', ''),
+                        r.get('mass_error', ''),
+                        r.get('ppm_error', ''),
+                        r.get('adduct', ''),
+                        source,
+                        source_id,
+                        self.build_source_url(source, source_id),
+                    ])
 
-                    # Data rows
-                    for result in self.last_results:
-                        writer.writerow([
-                            result['name'],
-                            result['formula'],
-                            result['neutral_mass'],
-                            result['mass_error'],
-                            result['ppm_error'],
-                            result['source'],
-                            result['source_id']
-                        ])
-                else:
-                    writer.writerow(['Name', 'Formula', 'Exact Mass (Da)', 'Source Database', 'Source ID'])
-
-                    # Data rows
-                    for result in self.last_results:
-                        writer.writerow([
-                            result['name'],
-                            result['formula'],
-                            result['exact_mass'],
-                            result['source'],
-                            result['source_id']
-                        ])
-
-            QMessageBox.information(
-                self,
-                "Export Successful",
-                f"Results exported to:\n{file_path}"
-            )
-
+            QMessageBox.information(self, "Export Successful", f"Saved to:\n{path}")
         except Exception as e:
-            QMessageBox.critical(
-                self,
-                "Export Error",
-                f"Failed to export results:\n{str(e)}"
-            )
+            QMessageBox.critical(self, "Export Error", str(e))
 
     def clear_search(self):
-        """Clear search inputs and results."""
-
         self.mass_input.clear()
         self.tolerance_input.setText("0.5")
         self.formula_input.clear()
         self.results_table.setRowCount(0)
-        self.last_results = []
+        self.last_results       = []
         self.last_search_params = {}
         self.export_button.setEnabled(False)
+        self.copy_button.setEnabled(False)
 
         if self.db_loaded:
-            source_info = ", ".join([f"{src}: {count:,}" for src, count in self.stats['by_source'].items()])
-            self.update_status(f"Database loaded - {source_info}")
+            parts = [f"{s}: {c:,}" for s, c in self.stats["by_source"].items()]
+            self.update_status("Database loaded — " + " | ".join(parts))
 
-        # Focus appropriate input
-        if self.mass_mode_radio.isChecked():
-            self.mass_input.setFocus()
-        else:
-            self.formula_input.setFocus()
+        (self.mass_input if self.mass_mode_radio.isChecked() else self.formula_input).setFocus()
 
-    def update_status(self, message):
-        """Update status bar message."""
-        self.status_label.setText(message)
+    def update_status(self, msg):
+        self.status_label.setText(msg)
 
+
+# ─────────────────────────────────────────────
+#  ENTRY POINT
+# ─────────────────────────────────────────────
 
 def main():
-    """Main application entry point."""
-
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
-
-    window = MassLookupWindow()
-    window.show()
-
+    w = MassLookupWindow()
+    w.show()
     sys.exit(app.exec_())
 
 
