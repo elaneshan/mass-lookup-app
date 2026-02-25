@@ -1,50 +1,63 @@
 """
-Multi-Source Database Builder v3
+Multi-Source Database Builder v5
 ==================================
 
-Builds unified SQLite database from:
-- HMDB (~217k metabolites)
-- ChEBI (~200k biochemical compounds)
-- LipidMaps (~50k lipids)
+Sources: HMDB + ChEBI + LipidMaps + NPAtlas + (MoNA via --mona-only)
 
 Usage:
-    python scripts/build_database_v3.py
-
-Expected files:
-    data/raw/hmdb_metabolites.xml
-    data/raw/chebi.sdf
-    data/raw/structures.sdf   (LipidMaps)
+    python build_database.py              # HMDB + ChEBI + LipidMaps + NPAtlas
+    python build_database.py --mona-only  # Add MoNA to existing DB (resumable)
 """
 
 import sqlite3
 import xml.etree.ElementTree as ET
 import os
-from pathlib import Path
+import re
+import csv
+import argparse
 
-# File paths
-HMDB_XML_FILE    = "data/raw/hmdb_metabolites.xml"
-CHEBI_SDF_FILE   = "data/raw/chebi.sdf"
+# ─────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────
+
+HMDB_XML_FILE      = "data/raw/hmdb_metabolites.xml"
+CHEBI_SDF_FILE     = "data/raw/chebi.sdf"
 LIPIDMAPS_SDF_FILE = "data/raw/structures.sdf"
-DB_FILE          = "database/compounds.db"
+NPATLAS_SDF_FILE   = "data/raw/NPAtlas_download_2024_09.sdf"
+MONA_SDF_FILE      = "data/raw/moNA-export-All_Spectra.sdf"
 
-# HMDB XML namespace
-HMDB_NS = {'hmdb': 'http://www.hmdb.ca'}
+DB_FILE            = "database/compounds.db"
+
+HMDB_NS   = {'hmdb': 'http://www.hmdb.ca'}
+CAS_REGEX = re.compile(r"^\d{2,7}-\d{2}-\d$")
+
+MONA_CHUNK_SIZE = 5_000
 
 
 # ─────────────────────────────────────────────
-#  DATABASE SETUP
+# DATABASE SETUP
 # ─────────────────────────────────────────────
 
-def create_database():
-    """Create the SQLite database with multi-source schema."""
-
+def create_database(mona_only=False):
     os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
+
+    if mona_only:
+        if not os.path.exists(DB_FILE):
+            print("⚠  No existing database — creating fresh one.")
+        else:
+            print(f"📂 Opening existing DB for MoNA import: {DB_FILE}")
+            conn = sqlite3.connect(DB_FILE)
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            return conn
 
     if os.path.exists(DB_FILE):
         print(f"Removing existing database: {DB_FILE}")
         os.remove(DB_FILE)
 
     conn = sqlite3.connect(DB_FILE)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     cursor = conn.cursor()
 
     cursor.execute('''
@@ -55,13 +68,17 @@ def create_database():
             name             TEXT,
             formula          TEXT,
             exact_mass       REAL,
+            cas              TEXT,
+            inchikey         TEXT,
             UNIQUE(source_database, source_id)
         )
     ''')
 
-    cursor.execute('CREATE INDEX idx_mass    ON compounds(exact_mass)')
-    cursor.execute('CREATE INDEX idx_formula ON compounds(formula)')
-    cursor.execute('CREATE INDEX idx_source  ON compounds(source_database)')
+    cursor.execute('CREATE INDEX idx_mass     ON compounds(exact_mass)')
+    cursor.execute('CREATE INDEX idx_formula  ON compounds(formula)')
+    cursor.execute('CREATE INDEX idx_source   ON compounds(source_database)')
+    cursor.execute('CREATE INDEX idx_cas      ON compounds(cas)')
+    cursor.execute('CREATE INDEX idx_inchikey ON compounds(inchikey)')
 
     conn.commit()
     print("✓ Database schema created")
@@ -69,319 +86,333 @@ def create_database():
 
 
 # ─────────────────────────────────────────────
-#  SHARED SDF PARSER
+# HELPERS
 # ─────────────────────────────────────────────
 
-def parse_sdf(filepath):
-    """
-    Generic SDF file parser.
+def normalize_cas(value):
+    if not value:
+        return None
+    value = value.strip().split()[0].strip()
+    return value if CAS_REGEX.match(value) else None
 
-    Yields one dict per compound containing all > <FIELD> / value pairs
-    found in that entry. Handles files of any size via line-by-line reading.
-    """
+
+def insert_record(cursor, source, source_id, name, formula, mass, cas, inchikey=None):
+    try:
+        cursor.execute('''
+            INSERT INTO compounds
+                (source_database, source_id, name, formula, exact_mass, cas, inchikey)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (source, source_id, name, formula, mass, cas, inchikey))
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+
+def parse_sdf(filepath):
+    """Universal SDF parser — handles both '> <FIELD>' and '>  <FIELD>' formats."""
     with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
         entry = {}
         current_field = None
-
         for line in f:
-            line = line.rstrip('\n')
-
-            if line.startswith('> <'):
-                # Field header line:  > <FIELD_NAME>
-                current_field = line.strip().lstrip('> <').rstrip('>')
-                # Strip any trailing whitespace artefacts
-                current_field = current_field.strip()
-                entry[current_field] = ''
-
-            elif line == '$$$$':
-                # End of entry — yield and reset
+            stripped = line.strip()
+            if stripped.startswith('>') and '<' in stripped:
+                m = re.match(r'^>+\s*<(.+?)>', stripped)
+                if m:
+                    current_field = m.group(1).strip()
+                    entry[current_field] = ''
+            elif stripped == '$$$$':
                 yield entry
                 entry = {}
                 current_field = None
-
             else:
-                # Data line — append to current field value
-                if current_field is not None and line.strip():
-                    if entry[current_field]:
-                        entry[current_field] += ' ' + line.strip()
-                    else:
-                        entry[current_field] = line.strip()
-
-
-def insert_compounds(conn, records, source_name):
-    """Bulk-insert a list of (source_id, name, formula, mass) tuples."""
-    cursor = conn.cursor()
-    inserted = 0
-    skipped  = 0
-
-    for source_id, name, formula, mass in records:
-        try:
-            cursor.execute('''
-                INSERT INTO compounds
-                    (source_database, source_id, name, formula, exact_mass)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (source_name, source_id, name, formula, mass))
-            inserted += 1
-        except sqlite3.IntegrityError:
-            skipped += 1  # Duplicate
-
-    conn.commit()
-    return inserted, skipped
+                if current_field is not None and stripped:
+                    entry[current_field] = (entry[current_field] + ' ' + stripped).strip()
 
 
 # ─────────────────────────────────────────────
-#  HMDB PARSER
+# HMDB
 # ─────────────────────────────────────────────
 
 def parse_hmdb(conn):
-    """Parse HMDB XML and insert into database."""
-
     if not os.path.exists(HMDB_XML_FILE):
-        print(f"\n⚠  HMDB file not found: {HMDB_XML_FILE} — skipping")
+        print("⚠  HMDB not found — skipping")
         return 0
 
-    print(f"\n📖 Parsing HMDB: {HMDB_XML_FILE}")
-    print("   (This may take 5-10 minutes...)")
+    print("\n📖 Parsing HMDB...")
+    cursor = conn.cursor()
+    total = inserted = 0
 
-    cursor   = conn.cursor()
-    total    = inserted = skipped = 0
-
-    context      = ET.iterparse(HMDB_XML_FILE, events=('start', 'end'))
-    context      = iter(context)
-    event, root  = next(context)
+    context = iter(ET.iterparse(HMDB_XML_FILE, events=('start', 'end')))
+    event, root = next(context)
 
     for event, elem in context:
         if event == 'end' and elem.tag == '{http://www.hmdb.ca}metabolite':
             total += 1
+            hmdb_id  = elem.findtext('hmdb:accession',                    namespaces=HMDB_NS)
+            name     = elem.findtext('hmdb:name',                         namespaces=HMDB_NS)
+            formula  = elem.findtext('hmdb:chemical_formula',             namespaces=HMDB_NS)
+            mass     = elem.findtext('hmdb:monisotopic_molecular_weight', namespaces=HMDB_NS)
+            cas      = elem.findtext('hmdb:cas_registry_number',          namespaces=HMDB_NS)
+            inchikey = elem.findtext('hmdb:inchikey',                     namespaces=HMDB_NS)
 
-            hmdb_id = formula = name = mass = None
+            try:
+                mass = float(mass) if mass else None
+            except Exception:
+                mass = None
 
-            e = elem.find('hmdb:accession', HMDB_NS)
-            if e is not None: hmdb_id = e.text
-
-            e = elem.find('hmdb:name', HMDB_NS)
-            if e is not None: name = e.text
-
-            e = elem.find('hmdb:chemical_formula', HMDB_NS)
-            if e is not None: formula = e.text
-
-            # HMDB has typo: 'monisotopic' (missing 'o')
-            e = elem.find('hmdb:monisotopic_molecular_weight', HMDB_NS)
-            if e is not None and e.text:
-                try:    mass = float(e.text)
-                except: pass
-
-            if hmdb_id and name and mass is not None:
-                try:
-                    cursor.execute('''
-                        INSERT INTO compounds
-                            (source_database, source_id, name, formula, exact_mass)
-                        VALUES (?, ?, ?, ?, ?)
-                    ''', ('HMDB', hmdb_id, name, formula, mass))
+            if hmdb_id and name and mass:
+                if insert_record(cursor, "HMDB", hmdb_id, name, formula,
+                                 mass, normalize_cas(cas), inchikey):
                     inserted += 1
-                except sqlite3.IntegrityError:
-                    skipped += 1
-            else:
-                skipped += 1
 
-            if total % 10000 == 0:
-                print(f"   {total:,} processed | {inserted:,} inserted | {skipped:,} skipped")
+            if total % 10_000 == 0:
+                conn.commit()
+                print(f"   {total:,} processed, {inserted:,} inserted")
 
             elem.clear()
             root.clear()
 
     conn.commit()
-    print(f"✓  HMDB done — {inserted:,} compounds inserted")
+    print(f"✓ HMDB — inserted: {inserted:,} / {total:,}")
     return inserted
 
 
 # ─────────────────────────────────────────────
-#  CHEBI PARSER
+# ChEBI
 # ─────────────────────────────────────────────
 
 def parse_chebi(conn):
-    """Parse ChEBI SDF file and insert into database."""
-
     if not os.path.exists(CHEBI_SDF_FILE):
-        print(f"\n⚠  ChEBI file not found: {CHEBI_SDF_FILE} — skipping")
+        print("⚠  ChEBI not found — skipping")
         return 0
 
-    print(f"\n📖 Parsing ChEBI: {CHEBI_SDF_FILE}")
-
-    records  = []
-    total    = skipped = 0
+    print("\n📖 Parsing ChEBI...")
+    cursor = conn.cursor()
+    inserted = total = 0
 
     for entry in parse_sdf(CHEBI_SDF_FILE):
         total += 1
-
         chebi_id = entry.get('ChEBI ID', '').strip()
         name     = entry.get('ChEBI NAME', '').strip()
         formula  = entry.get('FORMULA', '').strip() or None
-        mass_str = entry.get('MONOISOTOPIC MASS', '') or entry.get('MONOISOTOPIC_MASS', '')
-        mass_str = mass_str.strip()
-
-        # Skip polymers / entries with no usable mass
-        if not chebi_id or not name or not mass_str:
-            skipped += 1
-            continue
-
-        # Skip polymer formulas (contain 'n')
-        if formula and 'n' in formula.lower() and '(' in formula:
-            skipped += 1
-            continue
+        mass_str = entry.get('MONOISOTOPIC_MASS', '').strip()
+        cas      = normalize_cas(entry.get('CAS Registry Numbers', ''))
+        inchikey = entry.get('INCHIKEY', '').strip() or None
 
         try:
             mass = float(mass_str)
-        except ValueError:
-            skipped += 1
+        except (ValueError, TypeError):
             continue
 
-        records.append((chebi_id, name, formula, mass))
+        if not chebi_id:
+            continue
 
-        if total % 20000 == 0:
-            print(f"   {total:,} processed...")
+        if insert_record(cursor, "ChEBI", chebi_id, name, formula, mass, cas, inchikey):
+            inserted += 1
 
-    inserted, dupes = insert_compounds(conn, records, 'ChEBI')
-    print(f"✓  ChEBI done — {inserted:,} inserted | {skipped + dupes:,} skipped/dupes")
+        if total % 20_000 == 0:
+            conn.commit()
+            print(f"   {total:,} processed, {inserted:,} inserted")
+
+    conn.commit()
+    print(f"✓ ChEBI — inserted: {inserted:,} / {total:,}")
     return inserted
 
 
 # ─────────────────────────────────────────────
-#  LIPIDMAPS PARSER
+# LipidMaps
 # ─────────────────────────────────────────────
 
 def parse_lipidmaps(conn):
-    """Parse LipidMaps SDF file and insert into database."""
-
     if not os.path.exists(LIPIDMAPS_SDF_FILE):
-        print(f"\n⚠  LipidMaps file not found: {LIPIDMAPS_SDF_FILE} — skipping")
+        print("⚠  LipidMaps not found — skipping")
         return 0
 
-    print(f"\n📖 Parsing LipidMaps: {LIPIDMAPS_SDF_FILE}")
-
-    records = []
-    total   = skipped = 0
+    print("\n📖 Parsing LipidMaps...")
+    cursor = conn.cursor()
+    inserted = total = 0
 
     for entry in parse_sdf(LIPIDMAPS_SDF_FILE):
         total += 1
-
         lm_id    = entry.get('LM_ID', '').strip()
-        # Prefer SYSTEMATIC_NAME, fall back to NAME
         name     = (entry.get('SYSTEMATIC_NAME') or entry.get('NAME', '')).strip()
         formula  = entry.get('FORMULA', '').strip() or None
         mass_str = entry.get('EXACT_MASS', '').strip()
-
-        if not lm_id or not name or not mass_str:
-            skipped += 1
-            continue
+        inchikey = entry.get('INCHI_KEY', '').strip() or None
 
         try:
             mass = float(mass_str)
-        except ValueError:
-            skipped += 1
+        except (ValueError, TypeError):
             continue
 
-        records.append((lm_id, name, formula, mass))
+        if insert_record(cursor, "LipidMaps", lm_id, name, formula, mass, None, inchikey):
+            inserted += 1
 
-        if total % 10000 == 0:
-            print(f"   {total:,} processed...")
+        if total % 10_000 == 0:
+            conn.commit()
+            print(f"   {total:,} processed, {inserted:,} inserted")
 
-    inserted, dupes = insert_compounds(conn, records, 'LipidMaps')
-    print(f"✓  LipidMaps done — {inserted:,} inserted | {skipped + dupes:,} skipped/dupes")
+    conn.commit()
+    print(f"✓ LipidMaps — inserted: {inserted:,} / {total:,}")
     return inserted
 
 
 # ─────────────────────────────────────────────
-#  VERIFICATION
+# NPAtlas
 # ─────────────────────────────────────────────
 
-def verify_database(conn):
-    """Print database summary and run a quick test search."""
+def parse_npatlas(conn):
+    if not os.path.exists(NPATLAS_SDF_FILE):
+        print("⚠  NPAtlas not found — skipping")
+        return 0
 
-    print("\n🧪 Verifying database...")
+    print("\n📖 Parsing NPAtlas...")
     cursor = conn.cursor()
+    inserted = total = 0
 
-    # Totals by source
-    cursor.execute('SELECT COUNT(*) FROM compounds')
-    total = cursor.fetchone()[0]
-    print(f"\nTotal compounds: {total:,}")
+    for entry in parse_sdf(NPATLAS_SDF_FILE):
+        total += 1
+        npa_id   = entry.get('npaid', '').strip()
+        name     = entry.get('compound_name', '').strip()
+        formula  = entry.get('compound_molecular_formula', '').strip() or None
+        mass_str = entry.get('compound_accurate_mass', '').strip()
+        inchikey = entry.get('compound_inchikey', '').strip() or None
 
-    cursor.execute('''
-        SELECT source_database, COUNT(*)
-        FROM compounds
-        GROUP BY source_database
-        ORDER BY COUNT(*) DESC
-    ''')
-    for source, count in cursor.fetchall():
-        pct = count / total * 100
-        print(f"  {source:<12} {count:>8,}  ({pct:.1f}%)")
+        try:
+            mass = float(mass_str)
+        except (ValueError, TypeError):
+            continue
 
-    # Sample from each source
-    print("\nSample entries per source:")
-    print("-" * 95)
-    print(f"{'Source':<12} {'ID':<18} {'Name':<35} {'Formula':<14} {'Mass'}")
-    print("-" * 95)
+        if not npa_id:
+            npa_id = f"npatlas_{total}"
 
-    cursor.execute('''
-        SELECT source_database, source_id, name, formula, exact_mass
-        FROM compounds
-        GROUP BY source_database
-        HAVING MIN(id)
-        LIMIT 10
-    ''')
-    for row in cursor.fetchall():
-        src, sid, name, formula, mass = row
-        print(f"{src:<12} {sid:<18} {(name or '')[:33]:<35} {(formula or 'N/A'):<14} {mass:.4f}")
-    print("-" * 95)
+        if insert_record(cursor, "NPAtlas", npa_id, name, formula, mass, None, inchikey):
+            inserted += 1
 
-    # Test search
-    test_mass = 180.063
-    tolerance = 0.5
-    print(f"\n🔍 Test search: {test_mass} ± {tolerance} Da")
-    cursor.execute('''
-        SELECT source_database, name, formula, exact_mass,
-               ABS(exact_mass - ?) as err
-        FROM compounds
-        WHERE exact_mass BETWEEN ? AND ?
-        ORDER BY err ASC
-        LIMIT 8
-    ''', (test_mass, test_mass - tolerance, test_mass + tolerance))
+        if total % 10_000 == 0:
+            conn.commit()
+            print(f"   {total:,} processed, {inserted:,} inserted")
 
-    rows = cursor.fetchall()
-    print(f"Found {len(rows)} matches (top 8):\n")
-    print(f"{'Source':<12} {'Name':<38} {'Formula':<14} {'Mass':<12} {'Error'}")
-    print("-" * 95)
-    for src, name, formula, mass, err in rows:
-        print(f"{src:<12} {(name or '')[:36]:<38} {(formula or 'N/A'):<14} {mass:<12.4f} {err:.4f}")
-
-    print("\n✅ Verification complete!")
+    conn.commit()
+    print(f"✓ NPAtlas — inserted: {inserted:,} / {total:,}")
+    return inserted
 
 
 # ─────────────────────────────────────────────
-#  MAIN
+# MoNA  (run separately via --mona-only)
+# ─────────────────────────────────────────────
+
+def parse_mona(conn):
+    if not os.path.exists(MONA_SDF_FILE):
+        print("⚠  MoNA not found — skipping")
+        return 0
+
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM compounds WHERE source_database='MoNA'")
+    already = cursor.fetchone()[0]
+    if already > 0:
+        print(f"\n📖 Resuming MoNA ({already:,} already in DB)...")
+    else:
+        print("\n📖 Parsing MoNA (17 GB — run overnight)...")
+        print("   Safe to Ctrl+C and resume — duplicates skipped automatically.")
+
+    inserted = total = skipped = 0
+    batch = []
+
+    def flush(batch):
+        nonlocal inserted
+        cur = conn.cursor()
+        for row in batch:
+            if insert_record(cur, *row):
+                inserted += 1
+        conn.commit()
+
+    with open(MONA_SDF_FILE, 'r', encoding='utf-8', errors='replace') as f:
+        entry = {}
+        current_field = None
+        for line in f:
+            stripped = line.strip()
+            if stripped.startswith('>') and '<' in stripped:
+                m = re.match(r'^>+\s*<(.+?)>', stripped)
+                if m:
+                    current_field = m.group(1).strip()
+                    entry[current_field] = ''
+            elif stripped == '$$$$':
+                total += 1
+                mona_id  = entry.get('ID', '').strip() or f"mona_{total}"
+                name     = entry.get('NAME', '').strip()
+                formula  = entry.get('FORMULA', '').strip() or None
+                mass_str = entry.get('EXACT MASS', '').strip()
+                inchikey = entry.get('INCHIKEY', '').strip() or None
+
+                try:
+                    mass = float(mass_str)
+                except (ValueError, TypeError):
+                    skipped += 1
+                    entry = {}
+                    current_field = None
+                    continue
+
+                batch.append(("MoNA", mona_id, name, formula, mass, None, inchikey))
+
+                if len(batch) >= MONA_CHUNK_SIZE:
+                    flush(batch)
+                    batch = []
+                    print(f"   {total:,} processed | {inserted:,} inserted | {skipped:,} skipped")
+
+                entry = {}
+                current_field = None
+            else:
+                if current_field is not None and stripped:
+                    entry[current_field] = (entry.get(current_field, '') + ' ' + stripped).strip()
+
+    if batch:
+        flush(batch)
+
+    conn.commit()
+    print(f"✓ MoNA — inserted: {inserted:,} / {total:,}")
+    return inserted
+
+
+# ─────────────────────────────────────────────
+# MAIN
 # ─────────────────────────────────────────────
 
 def main():
-    print("=" * 95)
-    print("Multi-Source Database Builder v3")
-    print("Sources: HMDB + ChEBI + LipidMaps")
-    print("=" * 95)
+    parser = argparse.ArgumentParser(description="Build LC-MS compound database")
+    parser.add_argument('--mona-only', action='store_true',
+                        help='Only add MoNA to existing DB (resumable, run overnight)')
+    args = parser.parse_args()
 
-    conn = create_database()
+    print("=" * 70)
+    print("Multi-Source Database Builder v5")
+    print("Sources: HMDB + ChEBI + LipidMaps + NPAtlas  [+ MoNA via --mona-only]")
+    print("=" * 70)
 
-    hmdb_count      = parse_hmdb(conn)
-    chebi_count     = parse_chebi(conn)
-    lipidmaps_count = parse_lipidmaps(conn)
+    conn = create_database(mona_only=args.mona_only)
 
-    verify_database(conn)
+    hmdb = chebi = lipid = npatlas = mona = 0
+
+    if not args.mona_only:
+        hmdb    = parse_hmdb(conn)
+        chebi   = parse_chebi(conn)
+        lipid   = parse_lipidmaps(conn)
+        npatlas = parse_npatlas(conn)
+
+    if args.mona_only:
+        mona = parse_mona(conn)
+
     conn.close()
 
-    total = hmdb_count + chebi_count + lipidmaps_count
-    print(f"\n✅ SUCCESS — database ready at: {DB_FILE}")
-    print(f"   HMDB:      {hmdb_count:>8,}")
-    print(f"   ChEBI:     {chebi_count:>8,}")
-    print(f"   LipidMaps: {lipidmaps_count:>8,}")
-    print(f"   TOTAL:     {total:>8,}")
+    total = hmdb + chebi + lipid + npatlas + mona
+    print("\n" + "=" * 70)
+    print("✅ Database build complete")
+    print(f"   HMDB:      {hmdb:,}")
+    print(f"   ChEBI:     {chebi:,}")
+    print(f"   LipidMaps: {lipid:,}")
+    print(f"   NPAtlas:   {npatlas:,}")
+    print(f"   MoNA:      {mona:,}")
+    print(f"   TOTAL:     {total:,}")
     print("\nNext step: python main.py")
 
 
