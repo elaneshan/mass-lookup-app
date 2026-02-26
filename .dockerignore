@@ -1,0 +1,22 @@
+# Large data files — never bundle into image
+data/
+database/
+
+# Python env
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# Dev/IDE
+.env
+.DS_Store
+*.log
+
+# GUI — not needed in API container
+main.py
+mass_lookup.spec
+
+# Docs
+*.md

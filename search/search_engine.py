@@ -1,10 +1,11 @@
 """
-Mass Search Engine v3
+Mass Search Engine v4
 =====================
 
-Adds:
-- CAS number support
-- MoNA compatibility
+Performance fixes:
+- Persistent SQLite connection (no reconnect per query)
+- Formula stored and queried pre-normalized → idx_formula index actually used
+- WAL mode for better read concurrency
 """
 
 import sqlite3
@@ -14,23 +15,35 @@ from typing import List, Dict, Optional, Literal
 DB_FILE = "database/compounds.db"
 
 ION_ADJUSTMENTS = {
-    'positive': 1.007276,
+    'positive':  1.007276,
     'negative': -1.007276,
-    'neutral': 0.0
+    'neutral':   0.0,
 }
+
+
+def normalize_formula(formula: str) -> str:
+    """Normalize formula to uppercase, no spaces — matches how DB stores it."""
+    if not formula:
+        return ''
+    return formula.strip().upper().replace(' ', '')
 
 
 class SearchEngine:
 
     def __init__(self, db_path: str = DB_FILE):
-
-        self.db_path = db_path
-
         if not Path(db_path).exists():
             raise FileNotFoundError(
                 f"Database not found at: {db_path}\n"
-                f"Please run: python scripts/build_database_v3.py"
+                f"Please run: python scripts/build_database_v5.py"
             )
+
+        # Persistent connection — opened once, reused for every query
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
+        self.conn.row_factory = sqlite3.Row
+        self.conn.execute("PRAGMA journal_mode=WAL")
+        self.conn.execute("PRAGMA synchronous=NORMAL")
+        self.conn.execute("PRAGMA cache_size=-64000")   # 64MB cache
+        self.conn.execute("PRAGMA temp_store=MEMORY")
 
     # ─────────────────────────────────────────────
     # MASS SEARCH
@@ -46,61 +59,43 @@ class SearchEngine:
     ) -> List[Dict]:
 
         neutral_mass = target_mass - ION_ADJUSTMENTS.get(ion_mode, 0.0)
-
-        lower_bound = neutral_mass - tolerance
-        upper_bound = neutral_mass + tolerance
-
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        lower        = neutral_mass - tolerance
+        upper        = neutral_mass + tolerance
 
         query = '''
-            SELECT 
-                source_database,
-                source_id,
-                name,
-                formula,
-                exact_mass,
-                cas,
-                ABS(exact_mass - ?) as mass_error,
-                ABS((exact_mass - ?) / ? * 1000000) as ppm_error
+            SELECT source_database, source_id, name, formula,
+                   exact_mass, cas, inchikey,
+                   ABS(exact_mass - ?)            AS mass_error,
+                   ABS((exact_mass - ?) / ? * 1e6) AS ppm_error
             FROM compounds
             WHERE exact_mass BETWEEN ? AND ?
         '''
-
-        params = [neutral_mass, neutral_mass, neutral_mass,
-                  lower_bound, upper_bound]
+        params = [neutral_mass, neutral_mass, neutral_mass, lower, upper]
 
         if source_filter:
-            placeholders = ','.join('?' * len(source_filter))
-            query += f' AND source_database IN ({placeholders})'
+            query += f' AND source_database IN ({",".join("?"*len(source_filter))})'
             params.extend(source_filter)
 
         query += ' ORDER BY mass_error ASC'
 
-        if max_results is not None:
-            query += f' LIMIT {max_results}'
+        if max_results:
+            query += f' LIMIT {int(max_results)}'
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
+        rows = self.conn.execute(query, params).fetchall()
 
-        results = []
-        for row in rows:
-            results.append({
-                'source': row['source_database'],
-                'source_id': row['source_id'],
-                'name': row['name'],
-                'formula': row['formula'] if row['formula'] else 'N/A',
-                'cas': row['cas'] if row['cas'] else '',
-                'neutral_mass': round(row['exact_mass'], 4),
-                'observed_mass': round(target_mass, 4),
-                'mass_error': round(row['mass_error'], 4),
-                'ppm_error': round(row['ppm_error'], 2),
-                'ion_mode': ion_mode
-            })
-
-        conn.close()
-        return results
+        return [{
+            'source':        row['source_database'],
+            'source_id':     row['source_id'],
+            'name':          row['name'],
+            'formula':       row['formula'] or 'N/A',
+            'cas':           row['cas'] or '',
+            'inchikey':      row['inchikey'] or '',
+            'neutral_mass':  round(row['exact_mass'], 6),
+            'observed_mass': round(target_mass, 6),
+            'mass_error':    round(row['mass_error'], 6),
+            'ppm_error':     round(row['ppm_error'], 3),
+            'ion_mode':      ion_mode,
+        } for row in rows]
 
     # ─────────────────────────────────────────────
     # BATCH MASS SEARCH
@@ -115,35 +110,54 @@ class SearchEngine:
     ) -> List[Dict]:
 
         all_results = []
-        query_id = 0
 
-        for observed_mass, adduct_delta, adduct_label in mass_adduct_pairs:
-
-            results = self.search_by_mass(
-                observed_mass,
-                tolerance,
-                ion_mode='neutral',
-                source_filter=source_filter,
-                max_results=max_results_per_query
-            )
-
+        for query_id, (observed_mass, adduct_delta, adduct_label) in enumerate(mass_adduct_pairs):
             neutral_mass = observed_mass - adduct_delta
+            lower        = neutral_mass - tolerance
+            upper        = neutral_mass + tolerance
 
-            for r in results:
-                r['query_id'] = query_id
-                r['query_mass'] = observed_mass
-                r['query_adduct'] = adduct_label
-                r['adduct'] = adduct_label
-                r['observed_mass'] = observed_mass
-                r['neutral_mass'] = neutral_mass
+            query = '''
+                SELECT source_database, source_id, name, formula,
+                       exact_mass, cas, inchikey,
+                       ABS(exact_mass - ?)            AS mass_error,
+                       ABS((exact_mass - ?) / ? * 1e6) AS ppm_error
+                FROM compounds
+                WHERE exact_mass BETWEEN ? AND ?
+            '''
+            params = [neutral_mass, neutral_mass, neutral_mass, lower, upper]
 
-            all_results.extend(results)
-            query_id += 1
+            if source_filter:
+                query += f' AND source_database IN ({",".join("?"*len(source_filter))})'
+                params.extend(source_filter)
+
+            query += f' ORDER BY mass_error ASC LIMIT {int(max_results_per_query)}'
+
+            rows = self.conn.execute(query, params).fetchall()
+
+            for row in rows:
+                all_results.append({
+                    'query_id':     query_id,
+                    'query_mass':   observed_mass,
+                    'query_adduct': adduct_label,
+                    'adduct':       adduct_label,
+                    'source':       row['source_database'],
+                    'source_id':    row['source_id'],
+                    'name':         row['name'],
+                    'formula':      row['formula'] or 'N/A',
+                    'cas':          row['cas'] or '',
+                    'inchikey':     row['inchikey'] or '',
+                    'neutral_mass': round(neutral_mass, 6),
+                    'observed_mass': round(observed_mass, 6),
+                    'mass_error':   round(row['mass_error'], 6),
+                    'ppm_error':    round(row['ppm_error'], 3),
+                    'ion_mode':     'positive' if adduct_delta > 0 else
+                                    'negative' if adduct_delta < 0 else 'neutral',
+                })
 
         return all_results
 
     # ─────────────────────────────────────────────
-    # FORMULA SEARCH
+    # FORMULA SEARCH  (fixed — uses index now)
     # ─────────────────────────────────────────────
 
     def search_by_formula(
@@ -153,77 +167,62 @@ class SearchEngine:
         max_results: Optional[int] = None
     ) -> List[Dict]:
 
-        formula_normalized = formula.strip().upper().replace(' ', '')
+        # Normalize input the same way the DB stores it
+        # idx_formula is on the raw formula column, so we query normalized
+        formula_norm = normalize_formula(formula)
 
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-
+        # Direct equality on normalized value — idx_formula can now be used
         query = '''
-            SELECT 
-                source_database,
-                source_id,
-                name,
-                formula,
-                exact_mass,
-                cas
+            SELECT source_database, source_id, name, formula,
+                   exact_mass, cas, inchikey
             FROM compounds
-            WHERE UPPER(REPLACE(formula, ' ', '')) = ?
+            WHERE formula_normalized = ?
         '''
-
-        params = [formula_normalized]
+        params = [formula_norm]
 
         if source_filter:
-            placeholders = ','.join('?' * len(source_filter))
-            query += f' AND source_database IN ({placeholders})'
+            query += f' AND source_database IN ({",".join("?"*len(source_filter))})'
             params.extend(source_filter)
 
         query += ' ORDER BY exact_mass ASC'
 
-        if max_results is not None:
-            query += f' LIMIT {max_results}'
+        if max_results:
+            query += f' LIMIT {int(max_results)}'
 
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
+        rows = self.conn.execute(query, params).fetchall()
 
-        results = []
-        for row in rows:
-            results.append({
-                'source': row['source_database'],
-                'source_id': row['source_id'],
-                'name': row['name'],
-                'formula': row['formula'] if row['formula'] else 'N/A',
-                'cas': row['cas'] if row['cas'] else '',
-                'exact_mass': round(row['exact_mass'], 4)
-            })
-
-        conn.close()
-        return results
+        return [{
+            'source':     row['source_database'],
+            'source_id':  row['source_id'],
+            'name':       row['name'],
+            'formula':    row['formula'] or 'N/A',
+            'cas':        row['cas'] or '',
+            'inchikey':   row['inchikey'] or '',
+            'exact_mass': round(row['exact_mass'], 6),
+        } for row in rows]
 
     # ─────────────────────────────────────────────
-    # DATABASE STATS
+    # STATS
     # ─────────────────────────────────────────────
 
     def get_stats(self) -> Dict:
-
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-
-        cursor.execute('SELECT COUNT(*) FROM compounds')
-        total = cursor.fetchone()[0]
-
-        cursor.execute(
-            'SELECT source_database, COUNT(*) FROM compounds GROUP BY source_database')
-        by_source = {row[0]: row[1] for row in cursor.fetchall()}
-
-        cursor.execute('SELECT MIN(exact_mass), MAX(exact_mass) FROM compounds')
-        min_mass, max_mass = cursor.fetchone()
-
-        conn.close()
+        total     = self.conn.execute('SELECT COUNT(*) FROM compounds').fetchone()[0]
+        by_source = dict(self.conn.execute(
+            'SELECT source_database, COUNT(*) FROM compounds GROUP BY source_database'
+        ).fetchall())
+        min_m, max_m = self.conn.execute(
+            'SELECT MIN(exact_mass), MAX(exact_mass) FROM compounds'
+        ).fetchone()
 
         return {
             'total_compounds': total,
-            'by_source': by_source,
-            'min_mass': round(min_mass, 4) if min_mass else None,
-            'max_mass': round(max_mass, 4) if max_mass else None
+            'by_source':       by_source,
+            'min_mass':        round(min_m, 4) if min_m else None,
+            'max_mass':        round(max_m, 4) if max_m else None,
         }
+
+    def __del__(self):
+        try:
+            self.conn.close()
+        except Exception:
+            pass

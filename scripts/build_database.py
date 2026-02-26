@@ -5,8 +5,8 @@ Multi-Source Database Builder v5
 Sources: HMDB + ChEBI + LipidMaps + NPAtlas + (MoNA via --mona-only)
 
 Usage:
-    python build_database.py              # HMDB + ChEBI + LipidMaps + NPAtlas
-    python build_database.py --mona-only  # Add MoNA to existing DB (resumable)
+    python build_database_v5.py              # HMDB + ChEBI + LipidMaps + NPAtlas
+    python build_database_v5.py --mona-only  # Add MoNA to existing DB (resumable)
 """
 
 import sqlite3
@@ -69,13 +69,15 @@ def create_database(mona_only=False):
             formula          TEXT,
             exact_mass       REAL,
             cas              TEXT,
-            inchikey         TEXT,
+            inchikey             TEXT,
+            formula_normalized   TEXT,
             UNIQUE(source_database, source_id)
         )
     ''')
 
-    cursor.execute('CREATE INDEX idx_mass     ON compounds(exact_mass)')
-    cursor.execute('CREATE INDEX idx_formula  ON compounds(formula)')
+    cursor.execute('CREATE INDEX idx_mass               ON compounds(exact_mass)')
+    cursor.execute('CREATE INDEX idx_formula            ON compounds(formula)')
+    cursor.execute('CREATE INDEX idx_formula_normalized ON compounds(formula_normalized)')
     cursor.execute('CREATE INDEX idx_source   ON compounds(source_database)')
     cursor.execute('CREATE INDEX idx_cas      ON compounds(cas)')
     cursor.execute('CREATE INDEX idx_inchikey ON compounds(inchikey)')
@@ -100,9 +102,9 @@ def insert_record(cursor, source, source_id, name, formula, mass, cas, inchikey=
     try:
         cursor.execute('''
             INSERT INTO compounds
-                (source_database, source_id, name, formula, exact_mass, cas, inchikey)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (source, source_id, name, formula, mass, cas, inchikey))
+                (source_database, source_id, name, formula, exact_mass, cas, inchikey, formula_normalized)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (source, source_id, name, formula, mass, cas, inchikey, formula.strip().upper().replace(' ','') if formula else None))
         return True
     except sqlite3.IntegrityError:
         return False

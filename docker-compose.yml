@@ -1,0 +1,21 @@
+services:
+  api:
+    build: .
+    container_name: mass-lookup-api
+    ports:
+      - "8000:8000"          # API accessible at http://localhost:8000
+    volumes:
+      - ./database:/app/database   # DB lives on host, mounted into container
+                                   # Update compounds.db anytime without rebuilding image
+    environment:
+      - DB_PATH=database/compounds.db
+    restart: unless-stopped        # Auto-restart on server reboot
+
+    # Health check — Docker will restart container if API stops responding
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
