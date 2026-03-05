@@ -14,3 +14,11 @@ venv/
 data/raw/
 database/
 
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Executables / archives
+*.exe
+*.zip
