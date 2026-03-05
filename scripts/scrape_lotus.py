@@ -80,19 +80,20 @@ def parse_and_insert(conn, flavonoids_only=False, limit=None):
     with gzip.open(LOTUS_FILE, 'rt', encoding='utf-8', errors='replace') as gz:
         reader = csv.DictReader(gz)
 
-        for row in reader:
-            # 230106_frozen_metadata.csv columns:
-            # structure_wikidata, structure_inchikey, structure_smiles,
-            # structure_molecular_formula, structure_exact_mass,
-            # structure_xlogp, np_superclass, np_class, np_pathway,
-            # structure_nameTraditional, organism_name ...
+        # Print headers on first run so we can verify column names
+        headers = reader.fieldnames
+        print(f"  Columns found: {headers[:8] if headers else 'NONE — check file'}")
 
+        for row in reader:
             inchikey = row.get('structure_inchikey', '').strip()
             smiles   = row.get('structure_smiles', '').strip() or \
                        row.get('structure_smiles_2D', '').strip()
             formula  = row.get('structure_molecular_formula', '').strip()
-            name     = row.get('structure_nameTraditional', '').strip() or \
-                       row.get('structure_name', '').strip() or None
+            # Try multiple possible name columns
+            name = (row.get('structure_nameTraditional') or
+                    row.get('structure_name') or
+                    row.get('structure_nameIUPAC') or
+                    '').strip() or None
 
             try:
                 mass = float(row.get('structure_exact_mass', '').strip())

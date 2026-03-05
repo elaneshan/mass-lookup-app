@@ -29,9 +29,11 @@ from pathlib import Path
 DB_FILE      = "database/compounds.db"
 DATA_DIR     = Path("data/raw/pubchem")
 MASS_URL     = "https://ftp.ncbi.nlm.nih.gov/pubchem/Compound/Extras/CID-Mass.gz"
-INCHIKEY_URL = "https://ftp.ncbi.nlm.nih.gov/pubchem/Compound/Extras/CID-InChI-Key.gz"
+SMILES_URL   = "https://ftp.ncbi.nlm.nih.gov/pubchem/Compound/Extras/CID-SMILES.gz"
+TITLE_URL    = "https://ftp.ncbi.nlm.nih.gov/pubchem/Compound/Extras/CID-Title.gz"
 MASS_FILE    = DATA_DIR / "CID-Mass.gz"
-INCHIKEY_FILE= DATA_DIR / "CID-InChI-Key.gz"
+SMILES_FILE  = DATA_DIR / "CID-SMILES.gz"
+TITLE_FILE   = DATA_DIR / "CID-Title.gz"
 
 MIN_MASS = 50.0
 MAX_MASS = 2000.0
@@ -66,40 +68,39 @@ def get_existing_cids(conn):
     return {r[0] for r in rows}
 
 
-def load_inchikey_map(limit=None):
+def load_flat_map(filepath, label, limit=None):
     """
-    Load CID -> InChIKey mapping from flat file.
-    Returns dict: {cid_str: inchikey}
+    Load a CID -> value flat file (tab-separated: CID\tvalue).
+    Returns dict: {cid_str: value}
     """
-    print("Loading InChIKey map...")
-    inchikey_map = {}
-    count = 0
-    with gzip.open(INCHIKEY_FILE, 'rt', encoding='utf-8') as f:
+    print(f"Loading {label} map...")
+    result = {}
+    count  = 0
+    with gzip.open(filepath, 'rt', encoding='utf-8', errors='replace') as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
             parts = line.split('\t')
             if len(parts) >= 2:
-                cid, inchikey = parts[0], parts[1]
-                inchikey_map[cid] = inchikey
+                result[parts[0]] = parts[1]
                 count += 1
                 if limit and count >= limit:
                     break
-    print(f"  Loaded {len(inchikey_map):,} InChIKey entries")
-    return inchikey_map
+    print(f"  Loaded {len(result):,} {label} entries")
+    return result
 
 
-def parse_and_insert(conn, inchikey_map, existing_cids, limit=None):
+def parse_and_insert(conn, smiles_map, title_map, existing_cids, limit=None):
     """
     Parse CID-Mass file, filter by mass range, insert into DB.
-    CID-Mass format: CID\tformula\texact_mass\tsmiles (tab-separated)
+    CID-Mass format: CID\tformula\texact_mass (tab-separated)
     """
-    cursor  = conn.cursor()
+    cursor   = conn.cursor()
     inserted = 0
     skipped  = 0
     out_of_range = 0
-    batch   = []
+    batch    = []
 
     print("Parsing CID-Mass file and inserting...")
 
@@ -108,36 +109,32 @@ def parse_and_insert(conn, inchikey_map, existing_cids, limit=None):
             line = line.strip()
             if not line:
                 continue
-
             parts = line.split('\t')
             if len(parts) < 3:
                 continue
 
             cid     = parts[0].strip()
-            formula = parts[1].strip() if len(parts) > 1 else None
+            formula = parts[1].strip() if parts[1].strip() else None
             try:
                 mass = float(parts[2].strip())
             except ValueError:
                 continue
 
-            smiles  = parts[3].strip() if len(parts) > 3 else None
-
-            # Filter to metabolomics range
             if mass < MIN_MASS or mass > MAX_MASS:
                 out_of_range += 1
                 continue
 
-            # Skip already inserted
             if cid in existing_cids:
                 skipped += 1
                 continue
 
-            inchikey = inchikey_map.get(cid)
+            name         = title_map.get(cid)
+            smiles       = smiles_map.get(cid)
             formula_norm = formula.strip().upper().replace(' ', '') if formula else None
 
             batch.append((
-                'PubChem', cid, None,   # source, source_id, name (PubChem has no names in flat files)
-                formula, mass, None, inchikey, formula_norm, smiles
+                'PubChem', cid, name,
+                formula, mass, None, None, formula_norm, smiles
             ))
             existing_cids.add(cid)
 
@@ -193,21 +190,26 @@ def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     if not args.skip_download:
-        print("Step 1/3 — Downloading flat files")
-        download_file(INCHIKEY_URL, INCHIKEY_FILE)
-        download_file(MASS_URL, MASS_FILE)
+        print("Step 1/3 — Downloading flat files (CID-Mass ~1.3GB, CID-SMILES ~1.4GB, CID-Title ~1.7GB)")
+        download_file(MASS_URL,   MASS_FILE)
+        download_file(SMILES_URL, SMILES_FILE)
+        download_file(TITLE_URL,  TITLE_FILE)
     else:
         print("Step 1/3 — Skipping download")
 
-    print("\nStep 2/3 — Loading InChIKey map")
-    inchikey_map = load_inchikey_map(limit=args.limit * 2 if args.limit else None)
+    print("\nStep 2/3 — Loading SMILES and Title maps")
+    smiles_map = load_flat_map(SMILES_FILE, "SMILES",
+                               limit=args.limit * 3 if args.limit else None)
+    title_map  = load_flat_map(TITLE_FILE,  "Title",
+                               limit=args.limit * 3 if args.limit else None)
 
     print("\nStep 3/3 — Parsing mass file and inserting")
     existing_cids = get_existing_cids(conn)
     print(f"  Already in DB: {len(existing_cids):,} PubChem compounds")
 
-    start = time.time()
-    inserted = parse_and_insert(conn, inchikey_map, existing_cids, limit=args.limit)
+    start    = time.time()
+    inserted = parse_and_insert(conn, smiles_map, title_map, existing_cids,
+                                limit=args.limit)
     elapsed  = time.time() - start
 
     total = conn.execute("SELECT COUNT(*) FROM compounds").fetchone()[0]
