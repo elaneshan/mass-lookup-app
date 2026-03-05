@@ -29,9 +29,9 @@ from pathlib import Path
 DB_FILE      = "database/compounds.db"
 DATA_DIR     = Path("data/raw/pubchem")
 MASS_URL     = "https://ftp.ncbi.nlm.nih.gov/pubchem/Compound/Extras/CID-Mass.gz"
-INCHIKEY_URL = "https://ftp.ncbi.nlm.nih.gov/pubchem/Compound/Extras/CID-InChIKey.gz"
+INCHIKEY_URL = "https://ftp.ncbi.nlm.nih.gov/pubchem/Compound/Extras/CID-InChI-Key.gz"
 MASS_FILE    = DATA_DIR / "CID-Mass.gz"
-INCHIKEY_FILE= DATA_DIR / "CID-InChIKey.gz"
+INCHIKEY_FILE= DATA_DIR / "CID-InChI-Key.gz"
 
 MIN_MASS = 50.0
 MAX_MASS = 2000.0

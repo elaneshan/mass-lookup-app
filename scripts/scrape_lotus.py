@@ -27,8 +27,8 @@ from pathlib import Path
 
 DB_FILE   = "database/compounds.db"
 DATA_DIR  = Path("data/raw/lotus")
-LOTUS_URL = "https://zenodo.org/records/12665171/files/lotus_db.csv.gz"
-LOTUS_FILE= DATA_DIR / "lotus_db.csv.gz"
+LOTUS_URL = "https://zenodo.org/records/5794106/files/230106_frozen_metadata.csv.gz"
+LOTUS_FILE= DATA_DIR / "230106_frozen_metadata.csv.gz"
 CHUNK     = 5_000
 
 # Flavonoid class keywords — LOTUS uses 'np_superclass' and 'np_class' columns
@@ -81,17 +81,18 @@ def parse_and_insert(conn, flavonoids_only=False, limit=None):
         reader = csv.DictReader(gz)
 
         for row in reader:
-            # LOTUS columns:
+            # 230106_frozen_metadata.csv columns:
             # structure_wikidata, structure_inchikey, structure_smiles,
             # structure_molecular_formula, structure_exact_mass,
             # structure_xlogp, np_superclass, np_class, np_pathway,
-            # organism_name, organism_taxonomy_08genus, ...
+            # structure_nameTraditional, organism_name ...
 
             inchikey = row.get('structure_inchikey', '').strip()
-            smiles   = row.get('structure_smiles', '').strip()
+            smiles   = row.get('structure_smiles', '').strip() or \
+                       row.get('structure_smiles_2D', '').strip()
             formula  = row.get('structure_molecular_formula', '').strip()
             name     = row.get('structure_nameTraditional', '').strip() or \
-                       row.get('organism_name', '').strip() or None
+                       row.get('structure_name', '').strip() or None
 
             try:
                 mass = float(row.get('structure_exact_mass', '').strip())
