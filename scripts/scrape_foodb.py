@@ -54,67 +54,66 @@ def parse_and_insert(conn, limit=None):
     skipped  = 0
     batch    = []
 
-    print("Opening tar.gz and parsing compounds.csv...")
+    print("Opening tar.gz and locating compounds.csv...")
 
-    with tarfile.open(FOODB_FILE, 'r:gz') as tar:
-        # Find the compounds CSV inside the archive
-        compounds_member = None
-        for member in tar.getmembers():
-            n = member.name.lower()
-            if n.endswith('compounds.csv') or n.endswith('compound.csv'):
-                compounds_member = member
+    # Stream through archive sequentially — handles macOS ._metadata entries
+    compounds_data = None
+    with tarfile.open(FOODB_FILE, 'r|gz') as tar:
+        for member in tar:
+            basename = member.name.split('/')[-1]
+            if basename.startswith('.'):          # skip macOS ._metadata files
+                continue
+            if basename.lower() in ('compounds.csv', 'compound.csv'):
+                f = tar.extractfile(member)
+                if f:
+                    compounds_data = f.read()
+                    print(f"  Found: {member.name}")
                 break
 
-        if not compounds_member:
-            print("ERROR: could not find compounds.csv in archive.")
-            print("Files in archive:")
-            for m in tar.getmembers():
-                print(f"  {m.name}")
-            return 0
+    if not compounds_data:
+        print("ERROR: compounds.csv not found. Check archive contents manually.")
+        return 0
 
-        print(f"  Found: {compounds_member.name}")
-        f      = tar.extractfile(compounds_member)
-        text   = io.TextIOWrapper(f, encoding='utf-8', errors='replace')
-        reader = csv.DictReader(text)
+    text   = io.TextIOWrapper(io.BytesIO(compounds_data), encoding='utf-8', errors='replace')
+    reader = csv.DictReader(text)
+    print(f"  Columns: {list(reader.fieldnames)[:10] if reader.fieldnames else 'NONE'}")
 
-        print(f"  Columns: {list(reader.fieldnames)[:10] if reader.fieldnames else 'NONE'}")
+    for row in reader:
+        name     = row.get('name', '').strip() or None
+        formula  = row.get('moldb_formula', '').strip() or None
+        smiles   = row.get('moldb_smiles', '').strip() or None
+        inchikey = row.get('moldb_inchikey', '').strip() or None
+        cas      = row.get('cas_number', '').strip() or None
+        pub_id   = row.get('public_id', '').strip() or \
+                   row.get('id', '').strip() or None
 
-        for row in reader:
-            name     = row.get('name', '').strip() or None
-            formula  = row.get('moldb_formula', '').strip() or None
-            smiles   = row.get('moldb_smiles', '').strip() or None
-            inchikey = row.get('moldb_inchikey', '').strip() or None
-            cas      = row.get('cas_number', '').strip() or None
-            pub_id   = row.get('public_id', '').strip() or \
-                       row.get('id', '').strip() or None
+        mass_str = row.get('moldb_mono_mass', '').strip()
+        try:
+            mass = float(mass_str)
+        except (ValueError, AttributeError):
+            skipped += 1
+            continue
 
-            mass_str = row.get('moldb_mono_mass', '').strip()
-            try:
-                mass = float(mass_str)
-            except (ValueError, AttributeError):
-                skipped += 1
-                continue
+        if mass < 50 or mass > 2000:
+            skipped += 1
+            continue
 
-            if mass < 50 or mass > 2000:
-                skipped += 1
-                continue
+        formula_norm = formula.strip().upper().replace(' ', '') if formula else None
 
-            formula_norm = formula.strip().upper().replace(' ', '') if formula else None
+        batch.append((
+            'FooDB', pub_id, name,
+            formula, mass, cas, inchikey, formula_norm, smiles
+        ))
 
-            batch.append((
-                'FooDB', pub_id, name,
-                formula, mass, cas, inchikey, formula_norm, smiles
-            ))
+        if len(batch) >= CHUNK:
+            _flush(cursor, batch)
+            conn.commit()
+            inserted += len(batch)
+            batch = []
+            print(f"  Inserted {inserted:,}...", end='\r')
 
-            if len(batch) >= CHUNK:
-                _flush(cursor, batch)
-                conn.commit()
-                inserted += len(batch)
-                batch = []
-                print(f"  Inserted {inserted:,}...", end='\r')
-
-            if limit and (inserted + len(batch)) >= limit:
-                break
+        if limit and (inserted + len(batch)) >= limit:
+            break
 
     if batch:
         _flush(cursor, batch)
