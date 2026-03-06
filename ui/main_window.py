@@ -365,10 +365,15 @@ class MassLookupWindow(QMainWindow):
         self.db_checkboxes = {}
         sources = list(self.stats.get("by_source", {}).keys()) or \
                   ["HMDB", "ChEBI", "LipidMaps", "NPAtlas"]
+        # Large sources unchecked by default — slow search times
+        large_sources = {"PubChem", "MS-DIAL"}
         for source in sources:
             count = self.stats.get("by_source", {}).get(source, 0)
             cb    = QCheckBox(f"{source}  ({count:,})")
-            cb.setChecked(True)
+            cb.setChecked(source not in large_sources)
+            if source in large_sources:
+                cb.setStyleSheet("color: #888;")
+                cb.setToolTip("Large database — may increase search time. Check to include.")
             self.db_checkboxes[source] = cb
             layout.addWidget(cb)
         layout.addStretch()
