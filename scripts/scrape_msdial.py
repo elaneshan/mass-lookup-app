@@ -36,16 +36,31 @@ DATA_DIR = Path("data/raw/msdial")
 CHUNK    = 5_000
 
 # Field name mappings — MS-DIAL MSP files use various field names
+# NOTE: precursormz is stored separately and used to back-calculate neutral mass
 FIELD_MAP = {
-    'name'          : 'name',
-    'precursormz'   : 'exact_mass',
-    'precursortype' : 'adduct',
-    'formula'       : 'formula',
-    'inchikey'      : 'inchikey',
-    'smiles'        : 'smiles',
-    'exactmass'     : 'exact_mass',
-    'mw'            : 'exact_mass',
+    'name'           : 'name',
+    'precursormz'    : 'precursor_mz',   # adduct ion m/z — NOT neutral mass
+    'precursortype'  : 'adduct',
+    'formula'        : 'formula',
+    'inchikey'       : 'inchikey',
+    'smiles'         : 'smiles',
+    'exactmass'      : 'exact_mass',     # true neutral mass when present
+    'mw'             : 'exact_mass',
     'molecularweight': 'exact_mass',
+}
+
+# Adduct offsets for back-calculating neutral mass from precursor m/z
+ADDUCT_OFFSETS = {
+    '[m+h]+':      1.007276,
+    '[m+na]+':     22.989218,
+    '[m+k]+':      38.963158,
+    '[m+nh4]+':    18.034374,
+    '[m+h-h2o]+':  -17.002740 + 1.007276,
+    '[m-h]-':      -1.007276,
+    '[m+cl]-':     34.969402,
+    '[m+fa-h]-':   44.998201,
+    '[m-h2o-h]-':  -19.01839,
+    '[m+hcoo]-':   44.998201,
 }
 
 
@@ -92,6 +107,17 @@ def parse_msp(filepath):
     return compounds
 
 
+def neutral_mass_from_precursor(precursor_mz, adduct_str):
+    """Back-calculate neutral mass from adduct ion m/z."""
+    if not precursor_mz or not adduct_str:
+        return None
+    key = adduct_str.strip().lower()
+    offset = ADDUCT_OFFSETS.get(key)
+    if offset is None:
+        return None
+    return precursor_mz - offset
+
+
 def insert_compounds(conn, compounds, source_id_prefix='MSDIAL'):
     cursor   = conn.cursor()
     inserted = 0
@@ -103,11 +129,27 @@ def insert_compounds(conn, compounds, source_id_prefix='MSDIAL'):
         formula  = c.get('formula', '').strip() or None
         inchikey = c.get('inchikey', '').strip() or None
         smiles   = c.get('smiles', '').strip() or None
+        adduct   = c.get('adduct', '').strip() or None
 
-        mass_str = c.get('exact_mass', '').strip()
-        try:
-            mass = float(mass_str)
-        except (ValueError, AttributeError):
+        # Prefer explicit exact_mass; fall back to back-calculated neutral mass
+        mass = None
+        mass_str = c.get('exact_mass', '').strip() if c.get('exact_mass') else ''
+        if mass_str:
+            try:
+                mass = float(mass_str)
+            except ValueError:
+                pass
+
+        if mass is None:
+            prec_str = c.get('precursor_mz', '').strip() if c.get('precursor_mz') else ''
+            if prec_str:
+                try:
+                    precursor_mz = float(prec_str)
+                    mass = neutral_mass_from_precursor(precursor_mz, adduct)
+                except ValueError:
+                    pass
+
+        if mass is None:
             skipped += 1
             continue
 
