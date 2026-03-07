@@ -1,26 +1,30 @@
-# ============================================================
-# HOW TO USE:
-# 1. On Windows, run:  pyinstaller mass_lookup.spec
-# ============================================================
+# mass_lookup.spec
+# PyInstaller spec for LUCID
+# Build with: pyinstaller mass_lookup.spec
 
 block_cipher = None
 
 a = Analysis(
-    ['main.py'],
+    ['ui/main_window.py'],
     pathex=['.'],
     binaries=[],
-    datas=[],
+    datas=[
+        ('config.ini', '.'),
+        ('lucid.ico', '.'),
+    ],
     hiddenimports=[
         'PyQt5',
         'PyQt5.QtWidgets',
         'PyQt5.QtCore',
         'PyQt5.QtGui',
-        'sqlite3',
-        'search.search_engine',
+        'requests',
+        'configparser',
     ],
     hookspath=[],
     runtime_hooks=[],
-    excludes=['matplotlib', 'numpy', 'pandas', 'scipy', 'PIL', 'tkinter'],
+    excludes=['search', 'scripts', 'database'],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
     cipher=block_cipher,
 )
 
@@ -31,13 +35,13 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='MassLookup',
+    name='LUCID',
     debug=False,
+    bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    console=False,      # No black terminal window — GUI only
-                        # Change to True if app crashes on launch (to see errors)
-    icon=None,          # Optional: put path to a .ico file here
+    console=False,
+    icon='lucid.ico',
 )
 
 coll = COLLECT(
@@ -47,5 +51,6 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    name='MassLookup',
+    upx_exclude=[],
+    name='LUCID',
 )
