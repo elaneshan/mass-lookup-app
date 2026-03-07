@@ -17,7 +17,7 @@ from PyQt5.QtWidgets import (
     QSpinBox, QShortcut, QFrame
 )
 from PyQt5.QtCore import Qt, QUrl
-from PyQt5.QtGui import QColor, QKeySequence, QDesktopServices
+from PyQt5.QtGui import QColor, QKeySequence, QDesktopServices, QIcon
 
 
 # ─────────────────────────────────────────────
@@ -213,6 +213,11 @@ class MassLookupWindow(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle("LUCID — LC-MS Unified Compound Identification Database")
+
+        # Set window icon (works both in dev and PyInstaller exe)
+        icon_path = Path(sys.executable).parent / "lucid.ico" if getattr(sys, "frozen", False)                     else Path(__file__).parent / "lucid.ico"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
         self.setGeometry(100, 100, 1500, 950)
 
         central = QWidget()
