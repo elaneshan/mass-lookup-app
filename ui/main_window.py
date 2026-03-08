@@ -201,8 +201,17 @@ class MassLookupWindow(QMainWindow):
                 self.stats         = self.search_engine.get_stats()
                 self.db_loaded     = True
                 self.backend_label = "Local DB"
+            except ModuleNotFoundError:
+                # Packaged exe shipped with mode=local by mistake — show helpful message
+                QMessageBox.critical(self, "Configuration Error",
+                    "This application is configured for local mode but no local database "
+                    "was found.\n\nIf you received this as a distributed .exe, please "
+                    "contact the person who shared it — the config.ini may need to be "
+                    "updated to mode = api.")
             except FileNotFoundError as e:
                 QMessageBox.critical(self, "Database Error", str(e))
+            except Exception as e:
+                QMessageBox.critical(self, "Local DB Error", str(e))
 
         self.init_ui()
 
