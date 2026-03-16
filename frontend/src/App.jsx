@@ -11,28 +11,50 @@ export default function App() {
   const [searched, setSearched]     = useState(false)
   const [expanded, setExpanded]     = useState(false)
 
-  async function handleSearch(params) {
-    setLoading(true)
-    setError(null)
-    setFilterTerm("")
-    setSearched(true)
+async function handleSearch(params) {
+  setLoading(true)
+  setError(null)
+  setFilterTerm("")
+  setSearched(true)
 
-    try {
+  try {
+    let data
+
+    if (params._formulas) {
+      // Formula search — call /search/formula for each formula
+      data = []
+      for (const [i, formula] of params._formulas.entries()) {
+        const url = `https://api.lucid-lcms.org/search/formula?formula=${encodeURIComponent(formula)}&limit=${params.limit}${params.sources ? '&sources=' + params.sources.join(',') : ''}`
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`Server error: ${res.status}`)
+        const results = await res.json()
+        data.push({
+          query_mass: formula,
+          adduct: 'formula',
+          adduct_delta: 0,
+          result_count: results.length,
+          results: results.map(r => ({ ...r, adduct: 'N/A', mass_error: null, ppm_error: null }))
+        })
+      }
+    } else {
+      // Mass search — use /search/batch
       const res = await fetch(`https://api.lucid-lcms.org/search/batch`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify(params),
       })
       if (!res.ok) throw new Error(`Server error: ${res.status}`)
-      const data = await res.json()
-      setResults(data)
-    } catch (e) {
-      setError(e.message)
-      setResults([])
-    } finally {
-      setLoading(false)
+      data = await res.json()
     }
+
+    setResults(data)
+  } catch (e) {
+    setError(e.message)
+    setResults([])
+  } finally {
+    setLoading(false)
   }
+}
 
   // Flatten results for counting
   const totalHits = results.reduce((sum, q) => sum + q.results.length, 0)
