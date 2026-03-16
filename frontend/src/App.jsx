@@ -18,7 +18,7 @@ export default function App() {
     setSearched(true)
 
     try {
-      const res  = await fetch(`/api/search/batch`, {
+      const res = await fetch(`https://lucid-lcms.org/search/batch`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify(params),

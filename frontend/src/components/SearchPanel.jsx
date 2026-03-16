@@ -27,7 +27,7 @@ export default function SearchPanel({ onSearch, loading }) {
 
   // Load DB stats on mount
   useEffect(() => {
-    fetch("/api/stats")
+    fetch("https://lucid-lcms.org/stats")
       .then(r => r.json())
       .then(setStats)
       .catch(() => {})
