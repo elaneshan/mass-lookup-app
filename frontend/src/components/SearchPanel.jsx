@@ -85,190 +85,198 @@ export default function SearchPanel({ onSearch, loading }) {
   const labelClass = "text-[11px] font-medium text-gray-500 uppercase tracking-widest mb-1.5 block"
 
   return (
-    <form onSubmit={handleSubmit}
-          className="bg-gray-900/60 rounded-xl border border-gray-800 p-5 backdrop-blur-sm">
+      <form
+          onSubmit={handleSubmit}
+          className="panel rounded-xl p-6 backdrop-blur-sm"
+      >
 
-      {/* Stats bar */}
-      {stats && (
-        <div className="flex flex-wrap items-center gap-4 mb-5 pb-4 border-b border-gray-800">
-          {SOURCES.map(src => (
-            <div key={src} className="flex items-center gap-1.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${SOURCE_COLORS[src]?.dot || 'bg-gray-500'}`}></span>
-              <span className="text-[11px] text-gray-500">{src}</span>
-              <span className="text-[11px] font-mono text-gray-400">
+        {/* Stats bar */}
+        {stats && (
+            <div className="flex flex-wrap items-center gap-4 mb-5 pb-4 border-b border-gray-800">
+              {SOURCES.map(src => (
+                  <div key={src} className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${SOURCE_COLORS[src]?.dot || 'bg-gray-500'}`}></span>
+                    <span className="text-[11px] text-gray-500">{src}</span>
+                    <span className="text-[11px] font-mono text-gray-400">
                 {stats.by_source[src]?.toLocaleString() || '—'}
               </span>
-            </div>
-          ))}
-          <div className="ml-auto text-[11px] font-mono text-cyan-500/70">
-            {stats.total_compounds?.toLocaleString()} compounds
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-col lg:flex-row gap-6">
-
-        {/* Left — input */}
-        <div className="flex-1 flex flex-col gap-4">
-
-          {/* Mode toggle */}
-          <div className="flex gap-1 bg-gray-950 rounded-lg p-1 w-fit">
-            {["mass", "formula"].map(m => (
-              <button
-                key={m} type="button"
-                onClick={() => setMode(m)}
-                className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all
-                  ${mode === m
-                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
-                    : "text-gray-500 hover:text-gray-300"}`}
-              >
-                {m === "mass" ? "Mass Search" : "Formula Search"}
-              </button>
-            ))}
-          </div>
-
-          {mode === "mass" ? (
-            <>
-              <div>
-                <label className={labelClass}>Observed Masses (m/z)</label>
-                <textarea
-                  value={massText}
-                  onChange={e => setMassText(e.target.value)}
-                  placeholder={"181.071\n194.079\n342.116"}
-                  rows={4}
-                  className={inputClass + " resize-none"}
-                />
-              </div>
-              <div className="flex gap-5 items-end">
-                <div>
-                  <label className={labelClass}>Tolerance</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number" step="0.001" min="0.001" max="5"
-                      value={tolerance}
-                      onChange={e => setTolerance(e.target.value)}
-                      className={inputClass + " w-24 text-center"}
-                    />
-                    <span className="text-xs text-gray-500 font-mono">Da</span>
                   </div>
-                </div>
+              ))}
+              <div className="ml-auto text-[11px] font-mono text-cyan-500/70">
+                {stats.total_compounds?.toLocaleString()} compounds
+              </div>
+            </div>
+        )}
+
+        <div className="flex flex-col lg:flex-row gap-6">
+
+          {/* Left — input */}
+          <div className="flex-1 flex flex-col gap-4">
+
+            {/* Mode toggle */}
+            <div className="flex gap-1 bg-gray-950 rounded-lg p-1 w-fit">
+              {["mass", "formula"].map(m => (
+                  <button
+                      key={m} type="button"
+                      onClick={() => setMode(m)}
+                      className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all
+                  ${mode === m
+                          ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                          : "text-gray-500 hover:text-gray-300"}`}
+                  >
+                    {m === "mass" ? "Mass Search" : "Formula Search"}
+                  </button>
+              ))}
+            </div>
+
+            {mode === "mass" ? (
+                <>
+                  <div>
+                    <label className={labelClass}>Observed Masses (m/z)</label>
+                    <textarea
+                        value={massText}
+                        onChange={e => setMassText(e.target.value)}
+                        placeholder={"181.071\n194.079\n342.116"}
+                        rows={4}
+                        className={inputClass + " resize-none"}
+                    />
+                  </div>
+                  <div className="flex gap-5 items-end">
+                    <div>
+                      <label className={labelClass}>Tolerance</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                            type="number" step="0.001" min="0.001" max="5"
+                            value={tolerance}
+                            onChange={e => setTolerance(e.target.value)}
+                            className={inputClass + " w-24 text-center"}
+                        />
+                        <span className="text-xs text-gray-500 font-mono">Da</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className={labelClass}>Max results</label>
+                      <input
+                          type="number" min="1" max="500"
+                          value={topN}
+                          onChange={e => setTopN(e.target.value)}
+                          className={inputClass + " w-20 text-center"}
+                      />
+                    </div>
+                  </div>
+                </>
+            ) : (
+                <>
+                  <div>
+                    <label className={labelClass}>Molecular Formulas</label>
+                    <textarea
+                        value={formulaText}
+                        onChange={e => setFormulaText(e.target.value)}
+                        placeholder={"C6H12O6\nC12H22O11"}
+                        rows={4}
+                        className={inputClass + " resize-none"}
+                    />
+                  </div>
+                  <div>
+                    <label className={labelClass}>Max results</label>
+                    <input
+                        type="number" min="1" max="500"
+                        value={topN}
+                        onChange={e => setTopN(e.target.value)}
+                        className={inputClass + " w-20 text-center"}
+                    />
+                  </div>
+                </>
+            )}
+          </div>
+
+          {/* Right — adducts + sources + button */}
+          <div className="flex flex-col gap-5 lg:w-56">
+
+            {mode === "mass" && (
                 <div>
-                  <label className={labelClass}>Max results</label>
-                  <input
-                    type="number" min="1" max="500"
-                    value={topN}
-                    onChange={e => setTopN(e.target.value)}
-                    className={inputClass + " w-20 text-center"}
-                  />
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div>
-                <label className={labelClass}>Molecular Formulas</label>
-                <textarea
-                  value={formulaText}
-                  onChange={e => setFormulaText(e.target.value)}
-                  placeholder={"C6H12O6\nC12H22O11"}
-                  rows={4}
-                  className={inputClass + " resize-none"}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Max results</label>
-                <input
-                  type="number" min="1" max="500"
-                  value={topN}
-                  onChange={e => setTopN(e.target.value)}
-                  className={inputClass + " w-20 text-center"}
-                />
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Right — adducts + sources + button */}
-        <div className="flex flex-col gap-5 lg:w-56">
-
-          {mode === "mass" && (
-            <div>
-              <label className={labelClass}>Adducts</label>
-              <div className="grid grid-cols-2 gap-y-2 gap-x-3">
-                {ADDUCTS.map(({ label, api }) => (
-                  <label key={api}
-                         className="flex items-center gap-2 cursor-pointer group">
-                    <div onClick={() => toggleAdduct(api)}
-                         className={`w-4 h-4 rounded border flex items-center justify-center
+                  <label className={labelClass}>Adducts</label>
+                  <div className="grid grid-cols-2 gap-y-2 gap-x-3">
+                    {ADDUCTS.map(({label, api}) => (
+                        <label key={api}
+                               className="flex items-center gap-2 cursor-pointer group">
+                          <div onClick={() => toggleAdduct(api)}
+                               className={`w-4 h-4 rounded border flex items-center justify-center
                            transition-all cursor-pointer flex-shrink-0
                            ${adducts[api]
-                             ? "bg-cyan-500/20 border-cyan-500/60"
-                             : "border-gray-700 group-hover:border-gray-500"}`}>
-                      {adducts[api] && (
-                        <svg className="w-2.5 h-2.5 text-cyan-400" fill="none"
-                             viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
-                        </svg>
-                      )}
-                    </div>
-                    <span className="text-[11px] font-mono text-gray-400 group-hover:text-gray-200
+                                   ? "bg-cyan-500/20 border-cyan-500/60"
+                                   : "border-gray-700 group-hover:border-gray-500"}`}>
+                            {adducts[api] && (
+                                <svg className="w-2.5 h-2.5 text-cyan-400" fill="none"
+                                     viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
+                                </svg>
+                            )}
+                          </div>
+                          <span className="text-[11px] font-mono text-gray-400 group-hover:text-gray-200
                                      transition-colors leading-none">
                       {label}
                     </span>
-                  </label>
+                        </label>
+                    ))}
+                  </div>
+                </div>
+            )}
+
+            <div>
+              <label className={labelClass}>Databases</label>
+              <div className="flex flex-col gap-2">
+                {SOURCES.map(src => (
+                    <label key={src}
+                           className="flex items-center gap-2 cursor-pointer group">
+                      <div onClick={() => toggleSource(src)}
+                           className={`w-4 h-4 rounded border flex items-center justify-center
+                         transition-all cursor-pointer flex-shrink-0
+                         ${sources[src]
+                               ? "bg-cyan-500/20 border-cyan-500/60"
+                               : "border-gray-700 group-hover:border-gray-500"}`}>
+                        {sources[src] && (
+                            <svg className="w-2.5 h-2.5 text-cyan-400" fill="none"
+                                 viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
+                            </svg>
+                        )}
+                      </div>
+                      <span className={`text-[11px] font-medium transition-colors
+                    ${sources[src]
+                          ? SOURCE_COLORS[src]?.text || "text-gray-300"
+                          : "text-gray-600 group-hover:text-gray-400"}`}>
+                    {src}
+                  </span>
+                      {stats && (
+                          <span className="ml-auto text-[10px] font-mono text-gray-600">
+                      {stats.by_source[src]?.toLocaleString()}
+                    </span>
+                      )}
+                    </label>
                 ))}
               </div>
             </div>
-          )}
 
-          <div>
-            <label className={labelClass}>Databases</label>
-            <div className="flex flex-col gap-2">
-              {SOURCES.map(src => (
-                <label key={src}
-                       className="flex items-center gap-2 cursor-pointer group">
-                  <div onClick={() => toggleSource(src)}
-                       className={`w-4 h-4 rounded border flex items-center justify-center
-                         transition-all cursor-pointer flex-shrink-0
-                         ${sources[src]
-                           ? "bg-cyan-500/20 border-cyan-500/60"
-                           : "border-gray-700 group-hover:border-gray-500"}`}>
-                    {sources[src] && (
-                      <svg className="w-2.5 h-2.5 text-cyan-400" fill="none"
-                           viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
-                      </svg>
-                    )}
-                  </div>
-                  <span className={`text-[11px] font-medium transition-colors
-                    ${sources[src]
-                      ? SOURCE_COLORS[src]?.text || "text-gray-300"
-                      : "text-gray-600 group-hover:text-gray-400"}`}>
-                    {src}
-                  </span>
-                  {stats && (
-                    <span className="ml-auto text-[10px] font-mono text-gray-600">
-                      {stats.by_source[src]?.toLocaleString()}
-                    </span>
-                  )}
-                </label>
-              ))}
-            </div>
+            <button
+                type="submit"
+                disabled={loading}
+                className={`
+                      w-full py-2.5 rounded-lg text-sm font-medium
+                      transition-all
+                      
+                      ${loading
+                    ? "bg-gray-800 text-gray-600 cursor-not-allowed"
+                    : "bg-gradient-to-r from-cyan-500 to-teal-400 text-black hover:brightness-110"}
+`}
+            >
+
+              {loading ? "searching..." : "Search →"}
+
+            </button>
+
           </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className={`w-full py-2.5 rounded-lg text-sm font-medium transition-all
-              ${loading
-                ? "bg-gray-800 text-gray-600 cursor-not-allowed"
-                : "bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 hover:bg-cyan-500/30 hover:border-cyan-400/60"}`}
-          >
-            {loading ? "searching..." : "Search →"}
-          </button>
-
         </div>
-      </div>
-    </form>
+      </form>
   )
 }
