@@ -67,7 +67,7 @@ export default function App() {
   return (
     <div
       style={{ fontFamily: "'IBM Plex Sans', system-ui" }}
-      className="min-h-screen bg-[#0A0F14] text-gray-200 flex flex-col"
+      className="min-h-screen bg-[#0F1720] text-gray-200 flex flex-col"
     >
 
 <style>{`
@@ -89,7 +89,7 @@ background:rgba(0,194,255,0.05);
 }
 
 .panel{
-background:#0F1720;
+background:#131C26;
 border:1px solid rgba(255,255,255,0.05);
 }
 

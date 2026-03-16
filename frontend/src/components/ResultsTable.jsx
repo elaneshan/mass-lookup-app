@@ -4,11 +4,11 @@ export default function ResultsTable({ queryResults, filterTerm }) {
 
 const [copied,setCopied]=useState(null)
 
-const term=filterTerm.toLowerCase()
+const term = filterTerm.toLowerCase()
 
 function matches(r){
 if(!term)return true
-return[r.name,r.formula,r.source,r.inchikey,r.source_id]
+return [r.name,r.formula,r.source,r.inchikey,r.source_id]
 .some(v=>v?.toLowerCase().includes(term))
 }
 
@@ -24,6 +24,26 @@ if(val<5)return "text-yellow-400"
 return "text-red-400"
 }
 
+function shortenUrl(url){
+
+try{
+
+const u = new URL(url)
+
+const path = u.pathname.length>14
+?u.pathname.slice(0,14)+"..."
+:u.pathname
+
+return u.hostname+path
+
+}catch{
+
+return url
+
+}
+
+}
+
 return(
 
 <div className="panel rounded-xl overflow-hidden">
@@ -32,7 +52,7 @@ return(
 
 <table className="w-full text-xs">
 
-<thead className="bg-[#131C26] border-b border-gray-800">
+<thead className="sticky top-0 bg-[#131C26] border-b border-gray-800 z-10">
 
 <tr className="text-[10px] uppercase tracking-wider text-gray-400">
 
@@ -82,11 +102,18 @@ Q{qi+1} · {typeof query.query_mass==='number'
 
 {visible.map((r,ri)=>{
 
+const url =
+r.url ||
+r.link ||
+(r.source && r.source_id
+?`https://www.google.com/search?q=${r.source_id}`
+:null)
+
 return(
 
 <tr
 key={qi+"-"+ri}
-className="result-row border-t border-gray-900"
+className="result-row border-t border-gray-900 hover:bg-[rgba(0,194,255,0.08)] transition-colors"
 >
 
 <td className="px-3 py-2 text-gray-200 max-w-[220px] truncate">
@@ -117,8 +144,21 @@ className="result-row border-t border-gray-900"
 {r.source}
 </td>
 
-<td className="px-3 py-2 text-cyan-400 text-[11px]">
-link
+<td className="px-3 py-2 text-[11px] font-mono">
+
+{url ? (
+<a
+href={url}
+target="_blank"
+rel="noreferrer"
+className="text-cyan-400 hover:text-cyan-300"
+>
+{shortenUrl(url)} ↗
+</a>
+) : (
+<span className="text-gray-600">—</span>
+)}
+
 </td>
 
 <td className="px-3 py-2 font-mono text-[10px] text-gray-600 truncate max-w-[160px]">
