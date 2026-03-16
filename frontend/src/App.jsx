@@ -96,7 +96,7 @@ border:1px solid rgba(255,255,255,0.05);
 `}</style>
 
 <header className="border-b border-gray-800 bg-[#0A0F14] sticky top-0 z-50">
-<div className="max-w-screen-2xl mx-auto px-6 py-3 flex items-center gap-4">
+<div className="w-full px-8 py-4 flex items-center gap-4">
 
 <div className="flex items-center gap-3">
 <img
@@ -106,11 +106,11 @@ className="w-7 h-7 rounded"
 />
 
 <div>
-<span className="text-white font-semibold text-base">
+<span className="text-white font-semibold text-xl tracking-tight">
 LUCID
 </span>
 
-<span className="text-cyan-400/70 text-xs ml-2 hidden sm:inline">
+<span className="text-cyan-400/70 text-base ml-2 hidden sm:inline">
 LC-MS Unified Compound Identification Database
 </span>
 </div>
