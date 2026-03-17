@@ -77,18 +77,20 @@ def parse_and_insert(conn, limit=None):
 
     text   = io.TextIOWrapper(io.BytesIO(compounds_data), encoding='utf-8', errors='replace')
     reader = csv.DictReader(text)
-    print(f"  Columns: {list(reader.fieldnames)[:10] if reader.fieldnames else 'NONE'}")
+    print(f"  Columns: {list(reader.fieldnames) if reader.fieldnames else 'NONE'}")
 
     for row in reader:
         name     = row.get('name', '').strip() or None
-        formula  = row.get('moldb_formula', '').strip() or None
-        smiles   = row.get('moldb_smiles', '').strip() or None
-        inchikey = row.get('moldb_inchikey', '').strip() or None
+        # FooDB uses moldb_mono_mass OR moldb_average_mass
+        formula  = (row.get('moldb_formula') or row.get('moldb_molecular_formula') or '').strip() or None
+        smiles   = (row.get('moldb_smiles') or row.get('moldb_smiles_string') or '').strip() or None
+        inchikey = (row.get('moldb_inchikey') or row.get('moldb_standard_inchikey') or '').strip() or None
         cas      = row.get('cas_number', '').strip() or None
-        pub_id   = row.get('public_id', '').strip() or \
-                   row.get('id', '').strip() or None
+        pub_id   = row.get('public_id', '').strip() or                    row.get('id', '').strip() or None
 
-        mass_str = row.get('moldb_mono_mass', '').strip()
+        # Try multiple mass column names
+        mass_str = (row.get('moldb_mono_mass') or row.get('moldb_average_mass') or
+                    row.get('average_molecular_weight') or row.get('monisotopic_molecular_weight') or '').strip()
         try:
             mass = float(mass_str)
         except (ValueError, AttributeError):
