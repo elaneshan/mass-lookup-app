@@ -4,12 +4,13 @@ import ResultsTable from "./components/ResultsTable"
 import FilterBar from "./components/FilterBar"
 
 export default function App() {
-  const [results, setResults] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [results, setResults]       = useState([])
+  const [loading, setLoading]       = useState(false)
+  const [error, setError]           = useState(null)
   const [filterTerm, setFilterTerm] = useState("")
-  const [searched, setSearched] = useState(false)
-  const [expanded, setExpanded] = useState(false)
+  const [searched, setSearched]     = useState(false)
+  const [expanded, setExpanded]     = useState(false)
+  const [showAbout, setShowAbout]   = useState(false)
 
   async function handleSearch(params) {
     setLoading(true)
@@ -27,33 +28,25 @@ export default function App() {
           const res = await fetch(url)
           if (!res.ok) throw new Error(`Server error: ${res.status}`)
           const r = await res.json()
-
           data.push({
             query_mass: formula,
             adduct: 'formula',
             adduct_delta: 0,
             result_count: r.length,
-            results: r.map(c => ({
-              ...c,
-              adduct: 'N/A',
-              mass_error: null,
-              ppm_error: null
-            }))
+            results: r.map(c => ({ ...c, adduct: 'N/A', mass_error: null, ppm_error: null }))
           })
         }
       } else {
         const res = await fetch(`https://api.lucid-lcms.org/search/batch`, {
-          method: "POST",
+          method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(params)
+          body:    JSON.stringify(params),
         })
-
         if (!res.ok) throw new Error(`Server error: ${res.status}`)
         data = await res.json()
       }
 
       setResults(data)
-
     } catch (e) {
       setError(e.message)
       setResults([])
@@ -65,140 +58,194 @@ export default function App() {
   const totalHits = results.reduce((sum, q) => sum + q.results.length, 0)
 
   return (
-    <div
-      style={{ fontFamily: "'IBM Plex Sans', system-ui" }}
-      className="min-h-screen bg-[#0F1720] text-gray-200 flex flex-col"
-    >
+    <div style={{ fontFamily: "'IBM Plex Mono', 'Courier New', monospace" }}
+         className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
 
-<style>{`
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@300;400;500&display=swap');
+      {/* Google Font import via style tag */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
 
-*{box-sizing:border-box}
+        * { box-sizing: border-box; }
 
-::-webkit-scrollbar{width:6px;height:6px}
-::-webkit-scrollbar-track{background:#0A0F14}
-::-webkit-scrollbar-thumb{background:#1c2a38;border-radius:4px}
-::-webkit-scrollbar-thumb:hover{background:#00C2FF}
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0a0f1a; }
+        ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #0e7490; }
 
-.result-row{
-transition:background .12s ease;
-}
+        .lucid-glow { box-shadow: 0 0 20px rgba(6, 182, 212, 0.15); }
+        .lucid-border { border: 1px solid rgba(6, 182, 212, 0.2); }
 
-.result-row:hover{
-background:rgba(0,194,255,0.05);
-}
+        .result-row { transition: background 0.1s; }
+        .result-row:hover { background: rgba(6, 182, 212, 0.05) !important; }
 
-.panel{
-background:#131C26;
-border:1px solid rgba(255,255,255,0.05);
-}
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeIn 0.3s ease forwards; }
 
-`}</style>
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        .spin { animation: spin 0.8s linear infinite; }
+      `}</style>
 
-<header className="border-b border-gray-800 bg-[#0A0F14] sticky top-0 z-50">
-<div className="w-full px-8 py-4 flex items-center gap-4">
+      {/* Header */}
+      <header className="border-b border-cyan-900/40 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="w-full px-8 py-4 flex items-center gap-5">
+          <div className="flex items-center gap-3">
+            <img
+              src="/lucid-icon.png"
+              alt="LUCID"
+              className="w-9 h-9 rounded-lg"
+              onError={e => e.target.style.display='none'}
+            />
+            <div>
+              <span style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}
+                    className="text-white font-semibold text-xl tracking-tight">
+                LUCID
+              </span>
+              <span className="text-cyan-500/60 text-xs ml-3 hidden sm:inline">
+                LC-MS Unified Compound Identification Database
+              </span>
+            </div>
+          </div>
 
-<div className="flex items-center gap-3">
-<img
-src="/lucid-icon.png"
-alt="LUCID"
-className="w-7 h-7 rounded"
-/>
+          <div className="ml-auto flex items-center gap-6 text-[12px] text-gray-500">
+            <span className="hidden md:flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 inline-block"></span>
+              HMDB · ChEBI · LipidMaps · NPAtlas
+            </span>
+            <button
+              onClick={() => setShowAbout(a => !a)}
+              className="text-gray-500 hover:text-cyan-400 transition-colors">
+              About
+            </button>
+            <a href="https://github.com/elaneshan/mass-lookup-app"
+               target="_blank" rel="noreferrer"
+               className="text-gray-500 hover:text-cyan-400 transition-colors">
+              GitHub ↗
+            </a>
+          </div>
+        </div>
+      </header>
 
-<div>
-<span className="text-white font-semibold text-xl tracking-tight">
-LUCID
-</span>
+      {/* About panel */}
+      {showAbout && (
+        <div className="border-b border-cyan-900/30 bg-gray-900/80 backdrop-blur-sm fade-in">
+          <div className="w-full px-8 py-6 flex flex-col gap-4 max-w-3xl">
+            <div className="flex items-start justify-between">
+              <h2 style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}
+                  className="text-white font-semibold text-base">About LUCID</h2>
+              <button onClick={() => setShowAbout(false)}
+                      className="text-gray-600 hover:text-gray-400 text-sm transition-colors">
+                ✕
+              </button>
+            </div>
+            <p className="text-gray-400 text-sm leading-relaxed">
+              LUCID is an open-source LC-MS compound identification tool that unifies search
+              across 500k+ compounds from HMDB, ChEBI, LipidMaps, NPAtlas, FooDB, and PubChem
+              in a single interface — built to accelerate metabolomics research workflows.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[12px]">
+              <div className="flex flex-col gap-1">
+                <span className="text-gray-600 uppercase tracking-widest text-[10px]">Developed by</span>
+                <span className="text-gray-300">Elane Shane</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-gray-600 uppercase tracking-widest text-[10px]">Advisor</span>
+                <span className="text-gray-300">Ben Katz</span>
+                <span className="text-gray-500">Mass Spectrometry Facility, UC Irvine</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-gray-600 uppercase tracking-widest text-[10px]">Source Code</span>
+                <a href="https://github.com/elaneshan/mass-lookup-app"
+                   target="_blank" rel="noreferrer"
+                   className="text-cyan-400 hover:text-cyan-300 transition-colors">
+                  github.com/elaneshan/mass-lookup-app ↗
+                </a>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-gray-600 uppercase tracking-widest text-[10px]">Contact</span>
+                <a href="https://github.com/elaneshan/mass-lookup-app/issues"
+                   target="_blank" rel="noreferrer"
+                   className="text-cyan-400 hover:text-cyan-300 transition-colors">
+                  Open a GitHub issue ↗
+                </a>
+              </div>
+            </div>
+            <div className="pt-2 border-t border-gray-800 text-[11px] text-gray-600">
+              Citation pending — manuscript in preparation · MIT License
+            </div>
+          </div>
+        </div>
+      )}
 
-<span className="text-cyan-400/70 text-base ml-2 hidden sm:inline">
-LC-MS Unified Compound Identification Database
-</span>
-</div>
-</div>
+      <div className="flex flex-col flex-1 px-4 py-5 gap-4 max-w-screen-2xl mx-auto w-full">
 
-<div className="ml-auto flex items-center gap-4 text-[11px] text-gray-500">
+        {!expanded && (
+          <div className="fade-in">
+            <SearchPanel onSearch={handleSearch} loading={loading} />
+          </div>
+        )}
 
-<span className="hidden md:flex items-center gap-1.5">
-<span className="w-1.5 h-1.5 rounded-full bg-cyan-400 inline-block"></span>
-HMDB · ChEBI · LipidMaps · NPAtlas
-</span>
+        {searched && (
+          <div className="flex items-center gap-3">
+            <FilterBar value={filterTerm} onChange={setFilterTerm} />
+            <button
+              onClick={() => setExpanded(e => !e)}
+              className="ml-auto text-[11px] px-3 py-1.5 rounded lucid-border
+                         text-gray-400 hover:text-cyan-400 hover:border-cyan-500/40
+                         transition-colors bg-gray-900 whitespace-nowrap"
+            >
+              {expanded ? "↓ Collapse" : "↑ Expand"}
+            </button>
+            {totalHits > 0 && (
+              <span className="text-[11px] text-gray-500 whitespace-nowrap font-mono">
+                {totalHits.toLocaleString()} hit{totalHits !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        )}
 
-<a
-href="https://github.com/elaneshan/mass-lookup-app"
-target="_blank"
-rel="noreferrer"
-className="hover:text-cyan-400 transition-colors"
->
-GitHub ↗
-</a>
+        {error && (
+          <div className="lucid-border rounded-lg px-4 py-3 text-sm text-red-400
+                          bg-red-950/30 fade-in">
+            Could not reach server: {error}
+          </div>
+        )}
 
-</div>
-</div>
-</header>
+        {loading && (
+          <div className="flex items-center justify-center py-20 gap-3 text-gray-500 text-sm fade-in">
+            <svg className="spin w-5 h-5 text-cyan-500" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-20" cx="12" cy="12" r="10"
+                      stroke="currentColor" strokeWidth="3"/>
+              <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
+            </svg>
+            <span style={{ fontFamily: "'IBM Plex Mono'" }} className="text-xs">
+              searching...
+            </span>
+          </div>
+        )}
 
-<div className="flex flex-col flex-1 px-4 py-5 gap-4 max-w-screen-2xl mx-auto w-full">
+        {searched && !loading && !error && totalHits === 0 && (
+          <div className="text-center py-20 text-gray-600 text-sm fade-in">
+            No compounds found.
+          </div>
+        )}
 
-{!expanded && (
-<div>
-<SearchPanel onSearch={handleSearch} loading={loading}/>
-</div>
-)}
+        {!loading && totalHits > 0 && (
+          <div className="fade-in">
+            <ResultsTable queryResults={results} filterTerm={filterTerm} />
+          </div>
+        )}
 
-{searched && (
-<div className="flex items-center gap-3">
+      </div>
 
-<FilterBar
-value={filterTerm}
-onChange={setFilterTerm}
-/>
+      <footer className="text-center text-[10px] text-gray-700 py-4 border-t border-gray-900">
+        LUCID · Open source · Citation pending
+      </footer>
 
-<button
-onClick={()=>setExpanded(e=>!e)}
-className="ml-auto text-[11px] px-3 py-1.5 rounded border border-gray-700 text-gray-400 hover:text-cyan-400 hover:border-cyan-400/40 bg-[#0F1720]"
->
-{expanded ? "↓ Collapse" : "↑ Expand"}
-</button>
-
-{totalHits>0 &&(
-<span className="text-[11px] text-gray-500 font-mono">
-{totalHits.toLocaleString()} hits
-</span>
-)}
-
-</div>
-)}
-
-{error &&(
-<div className="panel rounded-lg px-4 py-3 text-sm text-red-400">
-Could not reach server: {error}
-</div>
-)}
-
-{loading &&(
-<div className="flex justify-center py-20 text-gray-500 text-sm">
-searching...
-</div>
-)}
-
-{searched && !loading && !error && totalHits===0 &&(
-<div className="text-center py-20 text-gray-600 text-sm">
-No compounds found.
-</div>
-)}
-
-{!loading && totalHits>0 &&(
-<ResultsTable
-queryResults={results}
-filterTerm={filterTerm}
-/>
-)}
-
-</div>
-
-<footer className="text-center text-[10px] text-gray-700 py-4 border-t border-gray-900">
-LUCID · Open source
-</footer>
-
-</div>
-)
+    </div>
+  )
 }
