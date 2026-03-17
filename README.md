@@ -1,29 +1,18 @@
 # LUCID — LC-MS Unified Compound Identification Database
 
-A desktop + API tool for LC-MS compound identification. Search 500k+ compounds by exact mass or molecular formula across HMDB, ChEBI, LipidMaps, NPAtlas, FooDB, and PubChem — with multi-adduct support, batch search, and CSV export.
+A full-stack metabolomics tool for LC-MS compound identification. Search 500k+ compounds by exact mass or molecular formula across HMDB, ChEBI, LipidMaps, NPAtlas, FooDB, and PubChem — with multi-adduct support, batch search, and CSV export.
 
-Distributed as a Windows `.exe` backed by an always-on FastAPI server, or run fully offline with a local database.
+**Web app:** [lucid-lcms.org](https://lucid-lcms.org) — no install required, works in any browser  
+**API:** [api.lucid-lcms.org/docs](https://api.lucid-lcms.org/docs) — REST API, publicly accessible  
+**Lab deployment:** Windows `.exe` backed by an always-on FastAPI server on the lab network
+
+> Citation pending — manuscript in preparation
 
 ---
 
 ## Example
 
-Search mass `181.071` with `[M+H]+` across all sources → returns glucose, galactose, and related metabolites with clickable source links and InChIKey identifiers.
-
----
-
-## Prerequisites
-
-**General:**
-- Python 3.11+
-- ~10 GB storage for full database build
-- Network access to lab server (for `.exe` deployment)
-
-**Python Libraries:**
-```
-pip install -r requirements.txt
-pip install PyQt5
-```
+Search mass `181.071` with `[M+H]+` across all sources → returns glucose, galactose, and related metabolites with clickable source links, InChIKey identifiers, and direct PubChem cross-references.
 
 ---
 
@@ -32,13 +21,12 @@ pip install PyQt5
 - **Batch mass search** — paste multiple masses at once, get top N hits per mass
 - **Multi-adduct search** — search one mass across `[M+H]+`, `[M+Na]+`, `[M+K]+`, and more simultaneously
 - **Formula search** — exact molecular formula lookup across all sources
-- **Clickable source URLs** — single click opens HMDB, ChEBI, LipidMaps, NPAtlas, or PubChem in browser
+- **Clickable source URLs** — opens HMDB, ChEBI, LipidMaps, NPAtlas, or PubChem directly in browser
 - **InChIKey column** — shown for every compound that has one
-- **Ctrl+F filter** — filter visible results by name, formula, source, or InChIKey in real time
+- **Ctrl+F filter** — filter results by name, formula, source, or InChIKey in real time
 - **Source filtering** — toggle individual databases independently
 - **Color-coded results** by source database
 - **CSV export** with full search parameters, source URLs, InChIKeys, and PubChem links
-- **Two deployment modes** — local SQLite (development) or FastAPI server (lab)
 - **Fast indexed queries** — mass search ~9ms, formula search ~1ms (500k+ compounds)
 
 ---
@@ -70,51 +58,85 @@ pip install PyQt5
 | PubChem | ~5,000,000 | Broad metabolomics range (50–2000 Da) |
 | **Total** | **~5,500,000+** | |
 
-*MoNA import pending (overnight server job)*
+*MoNA import pending*
 
 ---
 
-## Architecture
+## Deployment Options
 
-**Lab deployment:**
+LUCID supports three deployment modes:
+
 ```
-Lab PCs (any Windows machine on lab network)
-  └── MassLookup.exe  (unzip and run — no installs needed)
-        │  HTTP
-        ▼
-  Server — always on, runs as SYSTEM via Task Scheduler
-  └── FastAPI + Uvicorn
-        └── compounds.db (SQLite)
+1. Web app (public)
+   lucid-lcms.org  →  React frontend (Vercel)
+                         │  HTTPS
+                         ▼
+   api.lucid-lcms.org  →  FastAPI + SQLite (AWS EC2, Oregon)
+
+2. Lab deployment (Windows network)
+   LUCID.exe on any lab PC  →  FastAPI on lab server (always-on, SYSTEM)
+                                  └── compounds.db (5.5M compounds)
+
+3. Local development
+   python ui/main_window.py  →  local compounds.db
 ```
 
-**Local development:**
-```
-python ui/main_window.py  →  local compounds.db
-```
+---
+
+## Quick Start — Web App
+
+No installation needed. Go to [lucid-lcms.org](https://lucid-lcms.org) in any browser. The web version uses the core 4 databases (HMDB, ChEBI, LipidMaps, NPAtlas — 494,852 compounds).
 
 ---
 
 ## Quick Start — Local Development
 
 ```bash
-git clone <repo>
+git clone https://github.com/elaneshan/mass-lookup-app
 cd mass-lookup-app
 python -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 pip install PyQt5
 
-# Build core database (5-10 min)
+# Build core database (5-10 min, requires raw data files)
 python scripts/build_database_v5.py
 
-# Run GUI
+# Run desktop GUI
 python ui/main_window.py
+
+# Or run API server
+uvicorn api.main:app --reload --port 8000
 ```
+
+**Raw data files required** (not included in repo — download separately):
+- `data/raw/hmdb_metabolites.xml` — from [hmdb.ca/downloads](https://hmdb.ca/downloads)
+- `data/raw/chebi.sdf` — from [ebi.ac.uk/chebi](https://www.ebi.ac.uk/chebi/)
+- `data/raw/structures.sdf` — from [lipidmaps.org](https://www.lipidmaps.org)
+- `data/raw/NPAtlas_download_2024_09.sdf` — from [npatlas.org](https://www.npatlas.org)
+
+---
+
+## Quick Start — React Frontend (Development)
+
+```bash
+cd frontend
+npm install
+npm run dev
+# Opens at http://localhost:5173
+# Proxies API calls to http://localhost:8000
+```
+
+**Prerequisites:** Node.js 18+, FastAPI running locally on port 8000.
 
 ---
 
 ## API Server
 
-The server runs via Windows Task Scheduler as SYSTEM — starts on boot, no login required.
+The public API is live at `https://api.lucid-lcms.org`. For local use, start with:
+
+```bash
+uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
 
 **Endpoints:**
 
@@ -129,61 +151,45 @@ The server runs via Windows Task Scheduler as SYSTEM — starts on boot, no logi
 
 **Example:**
 ```
-GET /search/mass?mass=181.071&adduct=[M+H]+&tolerance=0.02&sources=HMDB,ChEBI
+GET https://api.lucid-lcms.org/search/mass?mass=181.071&adduct=[M+H]+&tolerance=0.02&sources=HMDB,ChEBI
 ```
 
 ---
 
-## Configuration
+## AWS Cloud Deployment
 
-`config.ini` (sits next to the `.exe` or `main_window.py`):
+The public web version runs on AWS (us-west-2):
 
-```ini
-[server]
-url = http://<server-ip>:8000
-
-[app]
-mode = api    # 'local' -> SQLite direct | 'api' -> FastAPI server
+```
+React frontend  →  Vercel (auto-deploys on git push to main)
+FastAPI backend →  AWS EC2 t3.micro (Ubuntu 24.04, PM2 process manager)
+SQLite database →  On EC2 instance (494,852 compounds, core 4 sources)
+DNS             →  AWS Route 53 (lucid-lcms.org)
+SSL             →  Let's Encrypt via Certbot (auto-renewing)
 ```
 
----
-
-## Scripts
-
-| Script | Purpose |
-|---|---|
-| `build_database_v5.py` | Build core DB from HMDB, ChEBI, LipidMaps, NPAtlas |
-| `migrate_add_smiles.py` | One-time migration — adds SMILES column to existing DB |
-| `scrape_pubchem.py` | PubChem flat-file import (50–2000 Da range, ~5M compounds) |
-| `scrape_foodb.py` | FooDB import (~28k food metabolites + flavonoids) |
-| `scrape_lotus.py` | LOTUS natural products import |
-| `export_progenesis.py` | Export to Progenesis QI CSV format |
-
-**Common commands:**
-
+**Deploying backend changes to EC2:**
 ```bash
-# Build core database
-python scripts/build_database_v5.py
+ssh -i ~/.ssh/lucid-key.pem ubuntu@44.252.20.43
+cd mass-lookup-app
+git pull origin main
+pm2 restart lucid-api
+```
 
-# Add SMILES column (run once before PubChem/FooDB/LOTUS)
-python scripts/migrate_add_smiles.py
-
-# Import PubChem (run overnight — downloads ~4GB)
-python scripts/scrape_pubchem.py
-
-# Import FooDB
-python scripts/scrape_foodb.py
-
-# Export for Progenesis
-python scripts/export_progenesis.py --sources HMDB LipidMaps
+**Checking API status:**
+```bash
+pm2 status
+curl https://api.lucid-lcms.org/health
 ```
 
 ---
 
 ## Windows Lab Deployment
 
+The lab version uses a Windows exe talking to an always-on lab server.
+
+**Server setup (run once):**
 ```powershell
-# On the server — activate venv and build database first
 venv\Scripts\activate
 python scripts/build_database_v5.py
 
@@ -200,20 +206,119 @@ Register-ScheduledTask -TaskName "MassLookupAPI" `
 Start-ScheduledTask -TaskName "MassLookupAPI"
 ```
 
+**Building the exe:**
+```powershell
+venv\Scripts\activate
+pip install pyinstaller
+pyinstaller mass_lookup.spec
+copy config.ini dist\LUCID\config.ini
+copy lucid.ico dist\LUCID\lucid.ico
+Compress-Archive -Path dist\LUCID -DestinationPath LUCID.zip -Force
+```
+
+**`config.ini` for lab distribution:**
+```ini
+[server]
+url = http://<lab-server-ip>:8000
+
+[app]
+mode = api
+```
+
 **Distributing to lab users:**
-1. Build the exe: `pyinstaller mass_lookup.spec`
-2. Copy `config.ini` into `dist\MassLookup\` with `mode = api` and correct server IP
-3. Zip `dist\MassLookup\` and share via Google Drive or network share
-4. Users unzip anywhere and double-click `MassLookup.exe` — no Python or installs needed
+1. Share `LUCID.zip` via Google Drive or network share
+2. Users unzip anywhere and double-click `LUCID.exe`
+3. Must be on the lab network — no Python or other installs needed
+
+---
+
+## Configuration
+
+`config.ini` controls which backend the app connects to:
+
+```ini
+[server]
+url = http://localhost:8000   # or lab server IP, or https://api.lucid-lcms.org
+
+[app]
+mode = api      # 'local' -> direct SQLite | 'api' -> FastAPI server
+```
+
+---
+
+## Scripts
+
+| Script | Purpose |
+|---|---|
+| `build_database_v5.py` | Build core DB from HMDB, ChEBI, LipidMaps, NPAtlas |
+| `migrate_add_smiles.py` | One-time migration — adds SMILES column to existing DB |
+| `optimize_db.py` | Add performance indexes after large imports (run after PubChem) |
+| `scrape_pubchem.py` | PubChem flat-file import (50–2000 Da range, ~5M compounds) |
+| `scrape_foodb.py` | FooDB import (~28k food metabolites + flavonoids) |
+| `scrape_lotus.py` | LOTUS natural products import |
+| `scrape_msdial.py` | MS-DIAL spectral library import (.msp files) |
+| `export_progenesis.py` | Export to Progenesis QI CSV format |
+
+**Common commands:**
+```bash
+# Build core database
+python scripts/build_database_v5.py
+
+# Run migrations before large imports
+python scripts/migrate_add_smiles.py
+
+# Import PubChem (run overnight — downloads ~4GB)
+python scripts/scrape_pubchem.py
+
+# Optimize after large imports
+python scripts/optimize_db.py
+
+# Import FooDB
+python scripts/scrape_foodb.py
+
+# Export for Progenesis
+python scripts/export_progenesis.py --sources HMDB LipidMaps
+```
 
 ---
 
 ## Tech Stack
 
-- **Python 3.11**
-- **PyQt5** — desktop GUI
-- **SQLite** — indexed compound database
-- **FastAPI + Uvicorn** — REST API server
-- **Windows Task Scheduler** — always-on server process (runs as SYSTEM)
-- **Pydantic** — request/response validation
-- **PyInstaller** — Windows `.exe` packaging
+| Layer | Technology |
+|---|---|
+| Web frontend | React + Vite + Tailwind CSS |
+| Desktop GUI | PyQt5 |
+| Backend API | FastAPI + Uvicorn |
+| Database | SQLite (WAL mode, partial indexes) |
+| Cloud hosting | AWS EC2 t3.micro (backend), Vercel (frontend) |
+| DNS + SSL | AWS Route 53 |
+| Process manager | PM2 (cloud) / Windows Task Scheduler (lab) |
+| Packaging | PyInstaller (.exe) |
+| Validation | Pydantic |
+
+---
+
+## Repository Structure
+
+```
+mass-lookup-app/
+├── api/                  # FastAPI backend
+│   ├── main.py
+│   ├── models.py
+│   └── dependencies.py
+├── frontend/             # React web app
+│   ├── src/
+│   │   ├── App.jsx
+│   │   └── components/
+│   └── package.json
+├── ui/                   # PyQt5 desktop app
+│   └── main_window.py
+├── scripts/              # Database build + import scripts
+├── search/               # SQLite search engine
+├── database/             # compiled .db file (gitignored)
+├── data/                 # raw source files (gitignored)
+├── config.ini
+├── mass_lookup.spec      # PyInstaller spec
+├── lucid.ico             # App icon
+└── requirements.txt
+```
