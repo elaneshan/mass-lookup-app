@@ -54,11 +54,12 @@ def parse_and_insert(conn, limit=None):
     skipped  = 0
     batch    = []
 
-    print("Opening tar.gz and locating compounds.csv...")
+    print("Opening tar archive and locating compounds.csv...")
 
-    # Stream through archive sequentially — handles macOS ._metadata entries
+    # FooDB ships as a plain .tar (not gzip) created on macOS
+    # Use 'r|*' to auto-detect format and skip ._metadata entries
     compounds_data = None
-    with tarfile.open(FOODB_FILE, 'r|gz') as tar:
+    with tarfile.open(FOODB_FILE, 'r|*') as tar:
         for member in tar:
             basename = member.name.split('/')[-1]
             if basename.startswith('.'):          # skip macOS ._metadata files
