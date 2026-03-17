@@ -97,7 +97,7 @@ export default function App() {
             <img
               src="/lucid-icon.png"
               alt="LUCID"
-              className="w-9 h-9 rounded-lg"
+              className="h-8 w-auto rounded object-contain"
               onError={e => e.target.style.display='none'}
             />
             <div>
@@ -130,39 +130,50 @@ export default function App() {
         </div>
       </header>
 
-      {/* About panel */}
+      {/* About modal */}
       {showAbout && (
-        <div className="border-b border-cyan-900/30 bg-gray-900/80 backdrop-blur-sm fade-in">
-          <div className="w-full px-8 py-6 flex flex-col gap-4 max-w-3xl">
-            <div className="flex items-start justify-between">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center fade-in"
+          onClick={() => setShowAbout(false)}
+        >
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div
+            className="relative z-10 bg-gray-900 border border-cyan-900/40 rounded-2xl
+                       p-8 max-w-lg w-full mx-4 shadow-2xl flex flex-col gap-5"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
               <h2 style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}
-                  className="text-white font-semibold text-base">About LUCID</h2>
+                  className="text-white font-semibold text-lg">About LUCID</h2>
               <button onClick={() => setShowAbout(false)}
-                      className="text-gray-600 hover:text-gray-400 text-sm transition-colors">
+                      className="text-gray-600 hover:text-gray-300 transition-colors text-lg leading-none">
                 ✕
               </button>
             </div>
+
             <p className="text-gray-400 text-sm leading-relaxed">
-              LUCID is an open-source LC-MS compound identification tool that unifies search
-              across 500k+ compounds from HMDB, ChEBI, LipidMaps, NPAtlas, FooDB, and PubChem
-              in a single interface — built to accelerate metabolomics research workflows.
+              LUCID is an open-source LC-MS compound identification tool that unifies
+              search across 500k+ compounds from HMDB, ChEBI, LipidMaps, NPAtlas,
+              FooDB, and PubChem — built to accelerate metabolomics research workflows.
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[12px]">
+
+            <div className="grid grid-cols-2 gap-4 text-[12px]">
               <div className="flex flex-col gap-1">
                 <span className="text-gray-600 uppercase tracking-widest text-[10px]">Developed by</span>
-                <span className="text-gray-300">Elane Shane</span>
+                <span className="text-gray-300 font-medium">Elane Shane</span>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-gray-600 uppercase tracking-widest text-[10px]">Advisor</span>
-                <span className="text-gray-300">Ben Katz</span>
-                <span className="text-gray-500">Mass Spectrometry Facility, UC Irvine</span>
+                <span className="text-gray-300 font-medium">Ben Katz</span>
+                <span className="text-gray-500">Mass Spectrometry Facility</span>
+                <span className="text-gray-500">UC Irvine</span>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-gray-600 uppercase tracking-widest text-[10px]">Source Code</span>
                 <a href="https://github.com/elaneshan/mass-lookup-app"
                    target="_blank" rel="noreferrer"
                    className="text-cyan-400 hover:text-cyan-300 transition-colors">
-                  github.com/elaneshan/mass-lookup-app ↗
+                  GitHub ↗
                 </a>
               </div>
               <div className="flex flex-col gap-1">
@@ -170,12 +181,13 @@ export default function App() {
                 <a href="https://github.com/elaneshan/mass-lookup-app/issues"
                    target="_blank" rel="noreferrer"
                    className="text-cyan-400 hover:text-cyan-300 transition-colors">
-                  Open a GitHub issue ↗
+                  Open an issue ↗
                 </a>
               </div>
             </div>
-            <div className="pt-2 border-t border-gray-800 text-[11px] text-gray-600">
-              Citation pending — manuscript in preparation · MIT License
+
+            <div className="pt-3 border-t border-gray-800 text-[11px] text-gray-600">
+              Citation pending · MIT License
             </div>
           </div>
         </div>
