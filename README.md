@@ -99,7 +99,7 @@ pip install -r requirements.txt
 pip install PyQt5
 
 # Build core database (5-10 min, requires raw data files)
-python scripts/build_database_v5.py
+python scripts/build_database.py
 
 # Run desktop GUI
 python ui/main_window.py
@@ -191,7 +191,7 @@ The lab version uses a Windows exe talking to an always-on lab server.
 **Server setup (run once):**
 ```powershell
 venv\Scripts\activate
-python scripts/build_database_v5.py
+python scripts/build_database.py
 
 # Register always-on API (runs as SYSTEM, survives logout and reboot)
 $action = New-ScheduledTaskAction `
@@ -250,7 +250,7 @@ mode = api      # 'local' -> direct SQLite | 'api' -> FastAPI server
 
 | Script | Purpose |
 |---|---|
-| `build_database_v5.py` | Build core DB from HMDB, ChEBI, LipidMaps, NPAtlas |
+| `build_database.py` | Build core DB from HMDB, ChEBI, LipidMaps, NPAtlas |
 | `migrate_add_smiles.py` | One-time migration: adds SMILES column to existing DB |
 | `optimize_db.py` | Add performance indexes after large imports (run after PubChem) |
 | `scrape_pubchem.py` | PubChem flat-file import (50–2000 Da range, ~5M compounds) |
@@ -262,7 +262,7 @@ mode = api      # 'local' -> direct SQLite | 'api' -> FastAPI server
 **Common commands:**
 ```bash
 # Build core database
-python scripts/build_database_v5.py
+python scripts/build_database.py
 
 # Run migrations before large imports
 python scripts/migrate_add_smiles.py
