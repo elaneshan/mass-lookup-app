@@ -1,12 +1,12 @@
-# LUCID — LC-MS Unified Compound Identification Database
+# LUCID: LC-MS Unified Compound Identification Database
 
-A full-stack metabolomics tool for LC-MS compound identification. Search 500k+ compounds by exact mass or molecular formula across HMDB, ChEBI, LipidMaps, NPAtlas, FooDB, and PubChem — with multi-adduct support, batch search, and CSV export.
+A full-stack metabolomics tool for LC-MS compound identification. Search 500k+ compounds by exact mass or molecular formula across HMDB, ChEBI, LipidMaps, NPAtlas, FooDB, and PubChem with multi-adduct support, batch search, and CSV export.
 
-**Web app:** [lucid-lcms.org](https://lucid-lcms.org) — no install required, works in any browser  
-**API:** [api.lucid-lcms.org/docs](https://api.lucid-lcms.org/docs) — REST API, publicly accessible  
+**Web app:** [lucid-lcms.org](https://lucid-lcms.org): no install required, works in any browser  
+**API:** [api.lucid-lcms.org/docs](https://api.lucid-lcms.org/docs): REST API, publicly accessible  
 **Lab deployment:** Windows `.exe` backed by an always-on FastAPI server on the lab network
 
-> Citation pending — manuscript in preparation
+> Citation pending: manuscript in preparation
 
 ---
 
@@ -18,16 +18,16 @@ Search mass `181.071` with `[M+H]+` across all sources → returns glucose, gala
 
 ## Features
 
-- **Batch mass search** — paste multiple masses at once, get top N hits per mass
-- **Multi-adduct search** — search one mass across `[M+H]+`, `[M+Na]+`, `[M+K]+`, and more simultaneously
-- **Formula search** — exact molecular formula lookup across all sources
-- **Clickable source URLs** — opens HMDB, ChEBI, LipidMaps, NPAtlas, or PubChem directly in browser
-- **InChIKey column** — shown for every compound that has one
-- **Ctrl+F filter** — filter results by name, formula, source, or InChIKey in real time
-- **Source filtering** — toggle individual databases independently
+- **Batch mass search** : paste multiple masses at once, get top N hits per mass
+- **Multi-adduct search** : search one mass across `[M+H]+`, `[M+Na]+`, `[M+K]+`, and more simultaneously
+- **Formula search** : exact molecular formula lookup across all sources
+- **Clickable source URLs** : opens HMDB, ChEBI, LipidMaps, NPAtlas, or PubChem directly in browser
+- **InChIKey column** : shown for every compound that has one
+- **Ctrl+F filter** : filter results by name, formula, source, or InChIKey in real time
+- **Source filtering** : toggle individual databases independently
 - **Color-coded results** by source database
 - **CSV export** with full search parameters, source URLs, InChIKeys, and PubChem links
-- **Fast indexed queries** — mass search ~9ms, formula search ~1ms (500k+ compounds)
+- **Fast indexed queries** : mass search ~9ms, formula search ~1ms (500k+ compounds)
 
 ---
 
@@ -83,13 +83,13 @@ LUCID supports three deployment modes:
 
 ---
 
-## Quick Start — Web App
+## Quick Start: Web App
 
-No installation needed. Go to [lucid-lcms.org](https://lucid-lcms.org) in any browser. The web version uses the core 4 databases (HMDB, ChEBI, LipidMaps, NPAtlas — 494,852 compounds).
+No installation needed. Go to [lucid-lcms.org](https://lucid-lcms.org) in any browser. The web version uses the core 4 databases (HMDB, ChEBI, LipidMaps, NPAtlas: 494,852 compounds).
 
 ---
 
-## Quick Start — Local Development
+## Quick Start: Local Development
 
 ```bash
 git clone https://github.com/elaneshan/mass-lookup-app
@@ -108,15 +108,15 @@ python ui/main_window.py
 uvicorn api.main:app --reload --port 8000
 ```
 
-**Raw data files required** (not included in repo — download separately):
-- `data/raw/hmdb_metabolites.xml` — from [hmdb.ca/downloads](https://hmdb.ca/downloads)
-- `data/raw/chebi.sdf` — from [ebi.ac.uk/chebi](https://www.ebi.ac.uk/chebi/)
-- `data/raw/structures.sdf` — from [lipidmaps.org](https://www.lipidmaps.org)
-- `data/raw/NPAtlas_download_2024_09.sdf` — from [npatlas.org](https://www.npatlas.org)
+**Raw data files required** (not included in repo: download separately):
+- `data/raw/hmdb_metabolites.xml`: from [hmdb.ca/downloads](https://hmdb.ca/downloads)
+- `data/raw/chebi.sdf`: from [ebi.ac.uk/chebi](https://www.ebi.ac.uk/chebi/)
+- `data/raw/structures.sdf`: from [lipidmaps.org](https://www.lipidmaps.org)
+- `data/raw/NPAtlas_download_2024_09.sdf`: from [npatlas.org](https://www.npatlas.org)
 
 ---
 
-## Quick Start — React Frontend (Development)
+## Quick Start: React Frontend (Development)
 
 ```bash
 cd frontend
@@ -228,7 +228,7 @@ mode = api
 **Distributing to lab users:**
 1. Share `LUCID.zip` via Google Drive or network share
 2. Users unzip anywhere and double-click `LUCID.exe`
-3. Must be on the lab network — no Python or other installs needed
+3. Must be on the lab network: no Python or other installs needed
 
 ---
 
@@ -251,7 +251,7 @@ mode = api      # 'local' -> direct SQLite | 'api' -> FastAPI server
 | Script | Purpose |
 |---|---|
 | `build_database_v5.py` | Build core DB from HMDB, ChEBI, LipidMaps, NPAtlas |
-| `migrate_add_smiles.py` | One-time migration — adds SMILES column to existing DB |
+| `migrate_add_smiles.py` | One-time migration: adds SMILES column to existing DB |
 | `optimize_db.py` | Add performance indexes after large imports (run after PubChem) |
 | `scrape_pubchem.py` | PubChem flat-file import (50–2000 Da range, ~5M compounds) |
 | `scrape_foodb.py` | FooDB import (~28k food metabolites + flavonoids) |
@@ -267,7 +267,7 @@ python scripts/build_database_v5.py
 # Run migrations before large imports
 python scripts/migrate_add_smiles.py
 
-# Import PubChem (run overnight — downloads ~4GB)
+# Import PubChem (run overnight: downloads ~4GB)
 python scripts/scrape_pubchem.py
 
 # Optimize after large imports
