@@ -22,7 +22,6 @@ ION_ADJUSTMENTS = {
 
 
 def normalize_formula(formula: str) -> str:
-    """Normalize formula to uppercase, no spaces — matches how DB stores it."""
     if not formula:
         return ''
     return formula.strip().upper().replace(' ', '')
@@ -36,13 +35,11 @@ class SearchEngine:
                 f"Database not found at: {db_path}\n"
                 f"Please run: python scripts/build_database_v5.py"
             )
-
-        # Persistent connection — opened once, reused for every query
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA synchronous=NORMAL")
-        self.conn.execute("PRAGMA cache_size=-64000")   # 64MB cache
+        self.conn.execute("PRAGMA cache_size=-64000")
         self.conn.execute("PRAGMA temp_store=MEMORY")
 
     # ─────────────────────────────────────────────
@@ -65,7 +62,7 @@ class SearchEngine:
         query = '''
             SELECT source_database, source_id, name, formula,
                    exact_mass, cas, inchikey,
-                   ABS(exact_mass - ?)            AS mass_error,
+                   ABS(exact_mass - ?)             AS mass_error,
                    ABS((exact_mass - ?) / ? * 1e6) AS ppm_error
             FROM compounds
             WHERE exact_mass BETWEEN ? AND ?
@@ -77,7 +74,6 @@ class SearchEngine:
             params.extend(source_filter)
 
         query += ' ORDER BY mass_error ASC'
-
         if max_results:
             query += f' LIMIT {int(max_results)}'
 
@@ -119,7 +115,7 @@ class SearchEngine:
             query = '''
                 SELECT source_database, source_id, name, formula,
                        exact_mass, cas, inchikey,
-                       ABS(exact_mass - ?)            AS mass_error,
+                       ABS(exact_mass - ?)             AS mass_error,
                        ABS((exact_mass - ?) / ? * 1e6) AS ppm_error
                 FROM compounds
                 WHERE exact_mass BETWEEN ? AND ?
@@ -136,28 +132,28 @@ class SearchEngine:
 
             for row in rows:
                 all_results.append({
-                    'query_id':     query_id,
-                    'query_mass':   observed_mass,
-                    'query_adduct': adduct_label,
-                    'adduct':       adduct_label,
-                    'source':       row['source_database'],
-                    'source_id':    row['source_id'],
-                    'name':         row['name'],
-                    'formula':      row['formula'] or 'N/A',
-                    'cas':          row['cas'] or '',
-                    'inchikey':     row['inchikey'] or '',
-                    'neutral_mass': round(neutral_mass, 6),
+                    'query_id':      query_id,
+                    'query_mass':    observed_mass,
+                    'query_adduct':  adduct_label,
+                    'adduct':        adduct_label,
+                    'source':        row['source_database'],
+                    'source_id':     row['source_id'],
+                    'name':          row['name'],
+                    'formula':       row['formula'] or 'N/A',
+                    'cas':           row['cas'] or '',
+                    'inchikey':      row['inchikey'] or '',
+                    'neutral_mass':  round(neutral_mass, 6),
                     'observed_mass': round(observed_mass, 6),
-                    'mass_error':   round(row['mass_error'], 6),
-                    'ppm_error':    round(row['ppm_error'], 3),
-                    'ion_mode':     'positive' if adduct_delta > 0 else
-                                    'negative' if adduct_delta < 0 else 'neutral',
+                    'mass_error':    round(row['mass_error'], 6),
+                    'ppm_error':     round(row['ppm_error'], 3),
+                    'ion_mode':      'positive' if adduct_delta > 0 else
+                                     'negative' if adduct_delta < 0 else 'neutral',
                 })
 
         return all_results
 
     # ─────────────────────────────────────────────
-    # FORMULA SEARCH  (fixed — uses index now)
+    # FORMULA SEARCH
     # ─────────────────────────────────────────────
 
     def search_by_formula(
@@ -167,11 +163,8 @@ class SearchEngine:
         max_results: Optional[int] = None
     ) -> List[Dict]:
 
-        # Normalize input the same way the DB stores it
-        # idx_formula is on the raw formula column, so we query normalized
         formula_norm = normalize_formula(formula)
 
-        # Direct equality on normalized value — idx_formula can now be used
         query = '''
             SELECT source_database, source_id, name, formula,
                    exact_mass, cas, inchikey
@@ -185,7 +178,6 @@ class SearchEngine:
             params.extend(source_filter)
 
         query += ' ORDER BY exact_mass ASC'
-
         if max_results:
             query += f' LIMIT {int(max_results)}'
 
@@ -199,6 +191,50 @@ class SearchEngine:
             'cas':        row['cas'] or '',
             'inchikey':   row['inchikey'] or '',
             'exact_mass': round(row['exact_mass'], 6),
+        } for row in rows]
+
+    # ─────────────────────────────────────────────
+    # NAME SEARCH
+    # ─────────────────────────────────────────────
+
+    def search_by_name(
+        self,
+        query: str,
+        source_filter: Optional[List[str]] = None,
+        max_results: int = 50
+    ) -> List[Dict]:
+        """
+        Case-insensitive substring search on compound name.
+        Returns compounds whose name contains the query string.
+        """
+        query_str = f'%{query.strip()}%'
+
+        sql = '''
+            SELECT source_database, source_id, name, formula,
+                   exact_mass, cas, inchikey
+            FROM compounds
+            WHERE name LIKE ? COLLATE NOCASE
+        '''
+        params = [query_str]
+
+        if source_filter:
+            sql += f' AND source_database IN ({",".join("?"*len(source_filter))})'
+            params.extend(source_filter)
+
+        # Order by name length ascending so exact/short matches float to top
+        sql += ' ORDER BY LENGTH(name) ASC'
+        sql += f' LIMIT {int(max_results)}'
+
+        rows = self.conn.execute(sql, params).fetchall()
+
+        return [{
+            'source':     row['source_database'],
+            'source_id':  row['source_id'],
+            'name':       row['name'],
+            'formula':    row['formula'] or 'N/A',
+            'cas':        row['cas'] or '',
+            'inchikey':   row['inchikey'] or '',
+            'exact_mass': round(row['exact_mass'], 6) if row['exact_mass'] else None,
         } for row in rows]
 
     # ─────────────────────────────────────────────

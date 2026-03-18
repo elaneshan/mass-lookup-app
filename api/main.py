@@ -7,13 +7,11 @@ Endpoints:
     GET  /stats
     GET  /search/mass
     GET  /search/formula
+    GET  /search/name
     POST /search/batch
 
 Run locally:
     uvicorn api.main:app --reload --port 8000
-
-Run via Docker:
-    docker-compose up
 """
 
 from fastapi import FastAPI, HTTPException, Query
@@ -28,7 +26,6 @@ from api.dependencies import get_search_engine
 
 # ─────────────────────────────────────────────
 # ADDUCT TABLE
-# Maps adduct label → mass delta
 # ─────────────────────────────────────────────
 
 ADDUCTS = {
@@ -43,7 +40,6 @@ ADDUCTS = {
 
 
 def resolve_adduct(adduct_str: str) -> float:
-    """Return mass delta for an adduct label. Raises 400 if unknown."""
     delta = ADDUCTS.get(adduct_str)
     if delta is None:
         raise HTTPException(
@@ -55,7 +51,6 @@ def resolve_adduct(adduct_str: str) -> float:
 
 
 def map_mass_result(r: dict, observed_mass: float, adduct: str) -> MassResult:
-    """Convert SearchEngine dict → MassResult Pydantic model."""
     return MassResult(
         source        = r.get("source", ""),
         source_id     = r.get("source_id"),
@@ -73,7 +68,6 @@ def map_mass_result(r: dict, observed_mass: float, adduct: str) -> MassResult:
 
 
 def map_formula_result(r: dict) -> CompoundResult:
-    """Convert SearchEngine dict → CompoundResult Pydantic model."""
     return CompoundResult(
         source     = r.get("source", ""),
         source_id  = r.get("source_id"),
@@ -90,12 +84,11 @@ def map_formula_result(r: dict) -> CompoundResult:
 # ─────────────────────────────────────────────
 
 app = FastAPI(
-    title       = "LC-MS Mass Lookup API",
-    description = "Search 494k+ compounds by mass or formula across HMDB, ChEBI, LipidMaps, NPAtlas and more.",
-    version     = "1.0.0",
+    title       = "LUCID API",
+    description = "Search 494k+ compounds by mass, formula, or name across HMDB, ChEBI, LipidMaps, NPAtlas and more.",
+    version     = "1.1.0",
 )
 
-# Allow requests from any origin — fine for a lab internal tool
 app.add_middleware(
     CORSMiddleware,
     allow_origins     = ["*"],
@@ -106,13 +99,13 @@ app.add_middleware(
 
 
 # ─────────────────────────────────────────────
-# STARTUP — validate DB exists
+# STARTUP
 # ─────────────────────────────────────────────
 
 @app.on_event("startup")
 def startup():
     try:
-        se = get_search_engine()
+        se    = get_search_engine()
         stats = se.get_stats()
         print(f"✓ Database loaded — {stats['total_compounds']:,} compounds")
         for src, cnt in stats["by_source"].items():
@@ -128,7 +121,6 @@ def startup():
 
 @app.get("/health", tags=["Meta"])
 def health():
-    """Quick liveness check — returns 200 if API is up."""
     try:
         se    = get_search_engine()
         stats = se.get_stats()
@@ -139,7 +131,6 @@ def health():
 
 @app.get("/stats", response_model=StatsResponse, tags=["Meta"])
 def stats():
-    """Database statistics — total compounds, counts per source, mass range."""
     try:
         se = get_search_engine()
         return se.get_stats()
@@ -152,35 +143,19 @@ def search_by_mass(
     mass:      float = Query(...,  description="Observed m/z value"),
     tolerance: float = Query(0.02, description="Mass tolerance in Da", gt=0, le=5.0),
     adduct:    str   = Query("neutral", description="Adduct mode, e.g. [M+H]+"),
-    sources:   Optional[str] = Query(None, description="Comma-separated sources, e.g. HMDB,ChEBI"),
-    limit:     int   = Query(20,   description="Max results", gt=0, le=500),
+    sources:   Optional[str] = Query(None, description="Comma-separated sources"),
+    limit:     int   = Query(20, description="Max results", gt=0, le=500),
 ):
-    """
-    Search compounds by observed mass with adduct correction.
-
-    Examples:
-    - `/search/mass?mass=181.071&adduct=[M+H]+&tolerance=0.02`
-    - `/search/mass?mass=181.071&adduct=[M+H]+&sources=HMDB,ChEBI&limit=10`
-    """
+    """Search compounds by observed mass with adduct correction."""
     adduct_delta  = resolve_adduct(adduct)
     source_filter = [s.strip() for s in sources.split(",")] if sources else None
-
-    # Determine ion mode from adduct delta sign
-    if adduct_delta > 0:
-        ion_mode = "positive"
-    elif adduct_delta < 0:
-        ion_mode = "negative"
-    else:
-        ion_mode = "neutral"
+    ion_mode      = "positive" if adduct_delta > 0 else "negative" if adduct_delta < 0 else "neutral"
 
     try:
         se      = get_search_engine()
         results = se.search_by_mass(
-            target_mass   = mass,
-            tolerance     = tolerance,
-            ion_mode      = ion_mode,
-            source_filter = source_filter,
-            max_results   = limit,
+            target_mass=mass, tolerance=tolerance,
+            ion_mode=ion_mode, source_filter=source_filter, max_results=limit,
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -194,20 +169,13 @@ def search_by_formula(
     sources: Optional[str] = Query(None, description="Comma-separated sources"),
     limit:   int = Query(100, description="Max results", gt=0, le=500),
 ):
-    """
-    Search compounds by exact molecular formula.
-
-    Example:
-    - `/search/formula?formula=C6H12O6&sources=HMDB,LipidMaps`
-    """
+    """Search compounds by exact molecular formula."""
     source_filter = [s.strip() for s in sources.split(",")] if sources else None
 
     try:
         se      = get_search_engine()
         results = se.search_by_formula(
-            formula       = formula,
-            source_filter = source_filter,
-            max_results   = limit,
+            formula=formula, source_filter=source_filter, max_results=limit,
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -215,22 +183,37 @@ def search_by_formula(
     return [map_formula_result(r) for r in results]
 
 
+@app.get("/search/name", response_model=List[CompoundResult], tags=["Search"])
+def search_by_name(
+    query:   str = Query(..., description="Compound name or partial name, e.g. caffeine"),
+    sources: Optional[str] = Query(None, description="Comma-separated sources"),
+    limit:   int = Query(50, description="Max results", gt=0, le=500),
+):
+    """
+    Search compounds by name (case-insensitive substring match).
+
+    Example:
+    - `/search/name?query=caffeine`
+    - `/search/name?query=glucose&sources=HMDB,ChEBI&limit=20`
+    """
+    source_filter = [s.strip() for s in sources.split(",")] if sources else None
+
+    try:
+        se      = get_search_engine()
+        results = se.search_by_name(
+            query=query, source_filter=source_filter, max_results=limit,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except AttributeError:
+        raise HTTPException(status_code=501, detail="Name search not implemented in this search engine version.")
+
+    return [map_formula_result(r) for r in results]
+
+
 @app.post("/search/batch", response_model=List[BatchQueryResult], tags=["Search"])
 def search_batch(request: BatchSearchRequest):
-    """
-    Batch mass search — multiple masses × multiple adducts in one request.
-
-    Example body:
-    ```json
-    {
-        "masses": [181.071, 194.079, 342.116],
-        "adducts": ["[M+H]+", "[M+Na]+"],
-        "tolerance": 0.02,
-        "sources": ["HMDB", "ChEBI"],
-        "limit": 20
-    }
-    ```
-    """
+    """Batch mass search — multiple masses × multiple adducts in one request."""
     try:
         se = get_search_engine()
     except FileNotFoundError as e:
@@ -241,20 +224,12 @@ def search_batch(request: BatchSearchRequest):
     for mass in request.masses:
         for adduct_label in request.adducts:
             adduct_delta = resolve_adduct(adduct_label)
-
-            if adduct_delta > 0:
-                ion_mode = "positive"
-            elif adduct_delta < 0:
-                ion_mode = "negative"
-            else:
-                ion_mode = "neutral"
+            ion_mode     = "positive" if adduct_delta > 0 else "negative" if adduct_delta < 0 else "neutral"
 
             results = se.search_by_mass(
-                target_mass   = mass,
-                tolerance     = request.tolerance,
-                ion_mode      = ion_mode,
-                source_filter = request.sources,
-                max_results   = request.limit,
+                target_mass=mass, tolerance=request.tolerance,
+                ion_mode=ion_mode, source_filter=request.sources,
+                max_results=request.limit,
             )
 
             query_results.append(BatchQueryResult(

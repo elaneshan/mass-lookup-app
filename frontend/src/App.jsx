@@ -21,7 +21,20 @@ export default function App() {
     try {
       let data
 
-      if (params._formulas) {
+      if (params._name) {
+        // Name search
+        const url = `https://api.lucid-lcms.org/search/name?query=${encodeURIComponent(params._name)}&limit=${params.limit}${params.sources ? '&sources=' + params.sources.join(',') : ''}`
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`Server error: ${res.status}`)
+        const r = await res.json()
+        data = [{
+          query_mass: params._name,
+          adduct: 'name',
+          adduct_delta: 0,
+          result_count: r.length,
+          results: r.map(c => ({ ...c, adduct: 'N/A', mass_error: null, ppm_error: null }))
+        }]
+      } else if (params._formulas) {
         data = []
         for (const formula of params._formulas) {
           const url = `https://api.lucid-lcms.org/search/formula?formula=${encodeURIComponent(formula)}&limit=${params.limit}${params.sources ? '&sources=' + params.sources.join(',') : ''}`
