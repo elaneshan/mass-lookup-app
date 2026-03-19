@@ -219,7 +219,7 @@ export default function ResultsTable({ queryResults, filterTerm }) {
                           {/* Expand arrow */}
                           <td className="px-2 py-2 text-gray-600 text-center">
                             {isGrouped && (
-                              <span className={`text-[10px] transition-transform inline-block
+                              <span className={`text-[10px] text-cyan-400 transition-transform inline-block
                                 ${isExpanded ? "rotate-90" : ""}`}>
                                 ▶
                               </span>
