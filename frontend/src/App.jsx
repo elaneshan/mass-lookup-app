@@ -173,7 +173,10 @@ export default function App() {
             <div className="grid grid-cols-2 gap-4 text-[12px]">
               <div className="flex flex-col gap-1">
                 <span className="text-gray-600 uppercase tracking-widest text-[10px]">Developed by</span>
-                <span className="text-gray-300 font-medium">Elane Shane</span>
+                <a href="https://www.linkedin.com/in/elane-shane" target="_blank" rel="noreferrer"
+                   className="text-gray-200 text-sm hover:text-cyan-400 transition-colors">
+                  Elane Shane ↗
+                </a>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-gray-600 uppercase tracking-widest text-[10px]">Advisor</span>
