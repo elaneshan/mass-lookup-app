@@ -52,10 +52,15 @@ class SearchEngine:
         tolerance: float = 0.5,
         ion_mode: Literal['positive', 'negative', 'neutral'] = 'neutral',
         source_filter: Optional[List[str]] = None,
-        max_results: Optional[int] = None
+        max_results: Optional[int] = None,
+        adduct_delta: Optional[float] = None,
     ) -> List[Dict]:
 
-        neutral_mass = target_mass - ION_ADJUSTMENTS.get(ion_mode, 0.0)
+        # Use exact adduct delta if provided, otherwise fall back to generic ion mode offset
+        if adduct_delta is not None:
+            neutral_mass = target_mass - adduct_delta
+        else:
+            neutral_mass = target_mass - ION_ADJUSTMENTS.get(ion_mode, 0.0)
         lower        = neutral_mass - tolerance
         upper        = neutral_mass + tolerance
 
@@ -108,6 +113,7 @@ class SearchEngine:
         all_results = []
 
         for query_id, (observed_mass, adduct_delta, adduct_label) in enumerate(mass_adduct_pairs):
+            # Use exact adduct delta directly
             neutral_mass = observed_mass - adduct_delta
             lower        = neutral_mass - tolerance
             upper        = neutral_mass + tolerance

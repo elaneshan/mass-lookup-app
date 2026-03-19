@@ -156,6 +156,7 @@ def search_by_mass(
         results = se.search_by_mass(
             target_mass=mass, tolerance=tolerance,
             ion_mode=ion_mode, source_filter=source_filter, max_results=limit,
+            adduct_delta=adduct_delta,
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=503, detail=str(e))
@@ -230,6 +231,7 @@ def search_batch(request: BatchSearchRequest):
                 target_mass=mass, tolerance=request.tolerance,
                 ion_mode=ion_mode, source_filter=request.sources,
                 max_results=request.limit,
+                adduct_delta=adduct_delta,
             )
 
             query_results.append(BatchQueryResult(
