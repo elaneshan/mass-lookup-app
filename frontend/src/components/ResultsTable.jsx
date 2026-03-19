@@ -22,8 +22,10 @@ function groupResults(results) {
   const groups = new Map()
 
   for (const r of results) {
-    const key = r.inchikey && r.inchikey !== 'None'
-      ? r.inchikey
+    // Group by InChIKey layer 1 (first 14 chars = molecular skeleton)
+    // This collapses stereoisomers, salts, and alternative names of the same compound
+    const key = r.inchikey && r.inchikey !== 'None' && r.inchikey.includes('-')
+      ? r.inchikey.split('-')[0]
       : `${r.formula || ''}__${r.name || ''}`
 
     if (!groups.has(key)) {
@@ -219,7 +221,7 @@ export default function ResultsTable({ queryResults, filterTerm }) {
                           {/* Expand arrow */}
                           <td className="px-2 py-2 text-gray-600 text-center">
                             {isGrouped && (
-                              <span className={`text-[10px] text-cyan-400 transition-transform inline-block
+                              <span className={`text-[10px] transition-transform inline-block
                                 ${isExpanded ? "rotate-90" : ""}`}>
                                 ▶
                               </span>
@@ -270,10 +272,10 @@ export default function ResultsTable({ queryResults, filterTerm }) {
                             </div>
                           </td>
 
-                          {/* Links */}
+                          {/* Links — one per source, deduped */}
                           <td className="px-3 py-2 text-[11px] font-mono">
                             <div className="flex gap-2 flex-wrap">
-                              {group.map(r => {
+                              {[...new Map(group.map(r => [r.source, r])).values()].map(r => {
                                 const url = SOURCE_URLS[r.source]?.(r.source_id)
                                 return url ? (
                                   <a key={r.source} href={url} target="_blank" rel="noreferrer"
