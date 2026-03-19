@@ -149,7 +149,7 @@ export default function SearchPanel({ onSearch, loading }) {
           {mode === "mass" && (
             <>
               <div>
-                <label className={labelClass}>Observed Masses (m/z)</label>
+                <label className={labelClass}>Observed Masses (monoisotopic, m/z)</label>
                 <textarea
                   value={massText}
                   onChange={e => setMassText(e.target.value)}
