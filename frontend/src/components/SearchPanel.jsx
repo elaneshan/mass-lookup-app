@@ -8,6 +8,7 @@ const ADDUCTS = [
   { label: "[M-H]-",    api: "[M-H]-" },
   { label: "[M+Cl]-",   api: "[M+Cl]-" },
   { label: "[M+FA-H]-", api: "[M+FA-H]-" },
+  { label: "[M-2H]2-",  api: "[M-2H]2-" },
   { label: "Neutral",   api: "neutral" },
 ]
 
@@ -149,7 +150,7 @@ export default function SearchPanel({ onSearch, loading }) {
           {mode === "mass" && (
             <>
               <div>
-                <label className={labelClass}>Observed Masses (monoisotopic, m/z)</label>
+                <label className={labelClass}>Observed Masses (m/z)</label>
                 <textarea
                   value={massText}
                   onChange={e => setMassText(e.target.value)}
