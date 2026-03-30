@@ -8,6 +8,8 @@ const ADDUCTS = [
   { label: "[M-H]-",    api: "[M-H]-" },
   { label: "[M+Cl]-",   api: "[M+Cl]-" },
   { label: "[M+FA-H]-", api: "[M+FA-H]-" },
+  { label: "[M]+",      api: "[M]+" },
+  { label: "[M-2H]-",   api: "[M-2H]-" },
   { label: "[M-2H]2-",  api: "[M-2H]2-" },
   { label: "Neutral",   api: "neutral" },
 ]
