@@ -1,10 +1,13 @@
 import { useState } from "react"
 import SearchPanel from "./components/SearchPanel"
 import ResultsTable from "./components/ResultsTable"
+import MS2ResultsTable from "./components/MS2ResultsTable"
 import FilterBar from "./components/FilterBar"
 
 export default function App() {
   const [results, setResults]       = useState([])
+  const [ms2Result, setMs2Result]   = useState(null)
+  const [searchMode, setSearchMode] = useState(null)   // "standard" | "ms2"
   const [loading, setLoading]       = useState(false)
   const [error, setError]           = useState(null)
   const [filterTerm, setFilterTerm] = useState("")
@@ -17,25 +20,41 @@ export default function App() {
     setError(null)
     setFilterTerm("")
     setSearched(true)
+    setMs2Result(null)
+    setResults([])
 
     try {
-      let data
+      // ── MS2 Pattern Analysis ─────────────────────────────────────────────
+      if (params._ms2) {
+        setSearchMode("ms2")
+        const res = await fetch("https://api.lucid-lcms.org/search/ms2", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify(params._ms2),
+        })
+        if (!res.ok) throw new Error(`Server error: ${res.status}`)
+        const data = await res.json()
+        setMs2Result(data)
 
-      if (params._name) {
-        // Name search
+      // ── Name search ──────────────────────────────────────────────────────
+      } else if (params._name) {
+        setSearchMode("standard")
         const url = `https://api.lucid-lcms.org/search/name?query=${encodeURIComponent(params._name)}&limit=${params.limit}${params.sources ? '&sources=' + params.sources.join(',') : ''}`
         const res = await fetch(url)
         if (!res.ok) throw new Error(`Server error: ${res.status}`)
         const r = await res.json()
-        data = [{
+        setResults([{
           query_mass: params._name,
           adduct: 'name',
           adduct_delta: 0,
           result_count: r.length,
           results: r.map(c => ({ ...c, adduct: 'N/A', mass_error: null, ppm_error: null }))
-        }]
+        }])
+
+      // ── Formula search ───────────────────────────────────────────────────
       } else if (params._formulas) {
-        data = []
+        setSearchMode("standard")
+        const data = []
         for (const formula of params._formulas) {
           const url = `https://api.lucid-lcms.org/search/formula?formula=${encodeURIComponent(formula)}&limit=${params.limit}${params.sources ? '&sources=' + params.sources.join(',') : ''}`
           const res = await fetch(url)
@@ -49,32 +68,36 @@ export default function App() {
             results: r.map(c => ({ ...c, adduct: 'N/A', mass_error: null, ppm_error: null }))
           })
         }
+        setResults(data)
+
+      // ── Batch mass search ────────────────────────────────────────────────
       } else {
+        setSearchMode("standard")
         const res = await fetch(`https://api.lucid-lcms.org/search/batch`, {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
           body:    JSON.stringify(params),
         })
         if (!res.ok) throw new Error(`Server error: ${res.status}`)
-        data = await res.json()
+        setResults(await res.json())
       }
 
-      setResults(data)
     } catch (e) {
       setError(e.message)
       setResults([])
+      setMs2Result(null)
     } finally {
       setLoading(false)
     }
   }
 
   const totalHits = results.reduce((sum, q) => sum + q.results.length, 0)
+  const isMs2     = searchMode === "ms2"
 
   return (
     <div style={{ fontFamily: "'IBM Plex Mono', 'Courier New', monospace" }}
          className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
 
-      {/* Google Font import via style tag */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
 
@@ -217,7 +240,7 @@ export default function App() {
           </div>
         )}
 
-        {searched && (
+        {searched && !isMs2 && (
           <div className="flex items-center gap-3">
             <FilterBar value={filterTerm} onChange={setFilterTerm} />
             <button
@@ -236,6 +259,19 @@ export default function App() {
           </div>
         )}
 
+        {searched && isMs2 && ms2Result && (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setExpanded(e => !e)}
+              className="ml-auto text-[11px] px-3 py-1.5 rounded lucid-border
+                         text-gray-400 hover:text-cyan-400 hover:border-cyan-500/40
+                         transition-colors bg-gray-900 whitespace-nowrap"
+            >
+              {expanded ? "↓ Collapse" : "↑ Expand"}
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="lucid-border rounded-lg px-4 py-3 text-sm text-red-400
                           bg-red-950/30 fade-in">
@@ -251,20 +287,32 @@ export default function App() {
               <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/>
             </svg>
             <span style={{ fontFamily: "'IBM Plex Mono'" }} className="text-xs">
-              searching...
+              {isMs2 ? "analyzing fragment pattern..." : "searching..."}
             </span>
           </div>
         )}
 
-        {searched && !loading && !error && totalHits === 0 && (
+        {searched && !loading && !error && !isMs2 && totalHits === 0 && (
           <div className="text-center py-20 text-gray-600 text-sm fade-in">
             No compounds found.
           </div>
         )}
 
-        {!loading && totalHits > 0 && (
+        {searched && !loading && !error && isMs2 && ms2Result && !ms2Result.candidates?.length && (
+          <div className="text-center py-20 text-gray-600 text-sm fade-in">
+            No candidates found for these fragment masses.
+          </div>
+        )}
+
+        {!loading && !isMs2 && totalHits > 0 && (
           <div className="fade-in">
             <ResultsTable queryResults={results} filterTerm={filterTerm} />
+          </div>
+        )}
+
+        {!loading && isMs2 && ms2Result && (
+          <div className="fade-in">
+            <MS2ResultsTable ms2Result={ms2Result} />
           </div>
         )}
 

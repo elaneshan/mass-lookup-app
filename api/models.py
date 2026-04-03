@@ -57,3 +57,49 @@ class BatchSearchRequest(BaseModel):
     tolerance: float       = Field(default=0.02, gt=0, le=5.0)
     sources:   Optional[List[str]] = None
     limit:     int         = Field(default=20, gt=0, le=500)
+
+
+
+# ── Add these to api/models.py ────────────────────────────────────────────────
+# (paste alongside the existing model definitions)
+
+from pydantic import BaseModel
+from typing import List, Optional
+
+class MS2SearchRequest(BaseModel):
+    fragment_masses: List[float]
+    adduct:          str   = "[M+H]+"
+    tolerance:       float = 0.02
+    sources:         Optional[List[str]] = None
+    limit:           int   = 20
+
+class MS2FragmentMatch(BaseModel):
+    fragment_mass: float
+    ppm_error:     float
+    mass_error:    float
+    neutral_mass:  float
+
+class MS2Candidate(BaseModel):
+    source:             str
+    source_id:          Optional[str]
+    name:               Optional[str]
+    formula:            Optional[str]
+    n_explained:        int
+    n_fragments:        int
+    score_pct:          float
+    avg_ppm:            float
+    fragment_matches:   List[MS2FragmentMatch]
+    unmatched_fragments: List[float]
+
+class MS2NeutralLoss(BaseModel):
+    from_mass:  float
+    to_mass:    float
+    delta:      float
+    loss_name:  str
+    loss_mass:  float
+    ppm_error:  float
+
+class MS2SearchResponse(BaseModel):
+    fragments:      List[float]
+    candidates:     List[MS2Candidate]
+    neutral_losses: List[MS2NeutralLoss]

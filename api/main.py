@@ -23,7 +23,7 @@ from api.models import (
     StatsResponse, BatchSearchRequest
 )
 from api.dependencies import get_search_engine
-
+from api.models import MS2SearchRequest, MS2SearchResponse
 # ─────────────────────────────────────────────
 # ADDUCT TABLE
 # ─────────────────────────────────────────────
@@ -247,6 +247,39 @@ def search_batch(request: BatchSearchRequest):
 
     return query_results
 
+
+@app.post("/search/ms2", response_model=MS2SearchResponse, tags=["Search"])
+def search_ms2(request: MS2SearchRequest):
+    """
+    MS2 Pattern Analysis — score candidates by how many fragments they explain.
+
+    Pass all fragment masses from a single MS2 spectrum. The engine:
+    - Searches each fragment against the compound database
+    - Computes pairwise mass differences and matches them to a neutral loss table
+    - Scores each candidate by fragments explained (primary) and avg ppm (tiebreaker)
+    - Returns candidates ranked by score + a list of detected neutral losses
+    """
+    adduct_delta = resolve_adduct(request.adduct)
+
+    try:
+        se = get_search_engine()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+
+    if not request.fragment_masses:
+        raise HTTPException(status_code=400, detail="Provide at least one fragment mass.")
+    if len(request.fragment_masses) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 fragment masses per request.")
+
+    result = se.search_ms2(
+        fragment_masses=request.fragment_masses,
+        adduct_delta=adduct_delta,
+        tolerance=request.tolerance,
+        source_filter=request.sources or None,
+        max_candidates=request.limit,
+    )
+
+    return result
 
 @app.get("/adducts", tags=["Meta"])
 def list_adducts():

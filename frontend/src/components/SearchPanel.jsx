@@ -28,9 +28,11 @@ export default function SearchPanel({ onSearch, loading }) {
   const [massText, setMassText]       = useState("")
   const [formulaText, setFormulaText] = useState("")
   const [nameText, setNameText]       = useState("")
+  const [ms2Text, setMs2Text]         = useState("")
   const [tolerance, setTolerance]     = useState("0.02")
   const [topN, setTopN]               = useState("20")
   const [adducts, setAdducts]         = useState({ "[M+H]+": true })
+  const [ms2Adduct, setMs2Adduct]     = useState("[M+H]+")
   const [sources, setSources]         = useState(
     Object.fromEntries(SOURCES.map(s => [s, true]))
   )
@@ -80,8 +82,7 @@ export default function SearchPanel({ onSearch, loading }) {
         _formulas: formulas,
       })
 
-    } else {
-      // name mode
+    } else if (mode === "name") {
       const query = nameText.trim()
       if (!query) { alert("Enter a compound name."); return }
       onSearch({
@@ -89,6 +90,24 @@ export default function SearchPanel({ onSearch, loading }) {
         sources: selectedSources.length ? selectedSources : null,
         limit:   parseInt(topN) || 50,
         _name: query,
+      })
+
+    } else if (mode === "ms2") {
+      const fragments = ms2Text.split(/[\n,\s]+/).map(s => s.trim()).filter(Boolean)
+        .map(Number).filter(n => !isNaN(n) && n > 0)
+      if (fragments.length < 2) { alert("Enter at least 2 fragment masses for pattern analysis."); return }
+      if (fragments.length > 50) { alert("Maximum 50 fragment masses."); return }
+      onSearch({
+        masses: [], adducts: [ms2Adduct], tolerance: 0,
+        sources: selectedSources.length ? selectedSources : null,
+        limit:   parseInt(topN) || 20,
+        _ms2: {
+          fragment_masses: fragments,
+          adduct:          ms2Adduct,
+          tolerance:       parseFloat(tolerance) || 0.02,
+          sources:         selectedSources.length ? selectedSources : null,
+          limit:           parseInt(topN) || 20,
+        },
       })
     }
   }
@@ -104,6 +123,7 @@ export default function SearchPanel({ onSearch, loading }) {
     { key: "mass",    label: "Mass Search" },
     { key: "formula", label: "Formula Search" },
     { key: "name",    label: "Name Search" },
+    { key: "ms2",     label: "MS² Pattern" },
   ]
 
   return (
@@ -140,7 +160,9 @@ export default function SearchPanel({ onSearch, loading }) {
                 onClick={() => setMode(key)}
                 className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all
                   ${mode === key
-                    ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
+                    ? key === "ms2"
+                      ? "bg-violet-500/20 text-violet-400 border border-violet-500/30"
+                      : "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30"
                     : "text-gray-500 hover:text-gray-300"}`}
               >
                 {label}
@@ -239,6 +261,69 @@ export default function SearchPanel({ onSearch, loading }) {
               </div>
             </>
           )}
+
+          {/* MS2 Pattern Analysis mode */}
+          {mode === "ms2" && (
+            <>
+              <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2.5">
+                <p className="text-[11px] text-violet-300/70 leading-relaxed">
+                  Paste all fragment masses from <strong className="text-violet-300">one MS² spectrum</strong>.
+                  The engine scores candidate compounds by how many fragments they explain,
+                  then detects neutral loss patterns across the spectrum.
+                </p>
+              </div>
+
+              <div>
+                <label className={labelClass}>Fragment Masses (m/z)</label>
+                <textarea
+                  value={ms2Text}
+                  onChange={e => setMs2Text(e.target.value)}
+                  placeholder={"1113.2891\n951.2382\n789.1868\n627.1363\n465.1033\n303.0502"}
+                  rows={6}
+                  className={inputClass + " resize-none"}
+                />
+                <p className="text-[10px] text-gray-600 mt-1.5">
+                  One mass per line, or comma/space separated. Min 2, max 50 fragments.
+                </p>
+              </div>
+
+              <div className="flex gap-5 items-end flex-wrap">
+                <div>
+                  <label className={labelClass}>Precursor adduct</label>
+                  <select
+                    value={ms2Adduct}
+                    onChange={e => setMs2Adduct(e.target.value)}
+                    className={inputClass + " w-36 cursor-pointer"}
+                  >
+                    {ADDUCTS.map(({ label, api }) => (
+                      <option key={api} value={api}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelClass}>Tolerance</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" step="0.001" min="0.001" max="1"
+                      value={tolerance}
+                      onChange={e => setTolerance(e.target.value)}
+                      className={inputClass + " w-24 text-center"}
+                    />
+                    <span className="text-xs text-gray-500 font-mono">Da</span>
+                  </div>
+                </div>
+                <div>
+                  <label className={labelClass}>Max candidates</label>
+                  <input
+                    type="number" min="1" max="50"
+                    value={topN}
+                    onChange={e => setTopN(e.target.value)}
+                    className={inputClass + " w-20 text-center"}
+                  />
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right — adducts + sources + button */}
@@ -317,9 +402,15 @@ export default function SearchPanel({ onSearch, loading }) {
             className={`w-full py-2.5 rounded-lg text-sm font-medium transition-all
               ${loading
                 ? "bg-gray-800 text-gray-600 cursor-not-allowed"
-                : "bg-gradient-to-r from-cyan-500 to-teal-400 text-black hover:brightness-110"}`}
+                : mode === "ms2"
+                  ? "bg-gradient-to-r from-violet-500 to-purple-400 text-white hover:brightness-110"
+                  : "bg-gradient-to-r from-cyan-500 to-teal-400 text-black hover:brightness-110"}`}
           >
-            {loading ? "searching..." : "Search →"}
+            {loading
+              ? "analyzing..."
+              : mode === "ms2"
+              ? "Analyze Pattern →"
+              : "Search →"}
           </button>
 
         </div>
