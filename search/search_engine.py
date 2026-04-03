@@ -291,22 +291,26 @@ class SearchEngine:
         top_n_per_fragment: int = 50,
     ) -> dict:
         """
-        MS2 pattern analysis — ladder-aware scoring.
+        MS2 pattern analysis — two-pass ladder-aware scoring.
 
-        The key insight: fragment ions in a glycoside ladder are NOT intact
-        compounds. They are sequential neutral losses from the precursor.
-        So we should NOT search each fragment as if it were a compound mass.
+        Key insight:
+          - Fragment ions in a glycoside series carry a proton, so the
+            SMALLEST fragment (likely the aglycone) needs adduct correction
+            to find its neutral mass in the DB.
+          - The LARGER fragments are sequential neutral losses — they are NOT
+            stored as compounds. We explain them by walking UP the ladder
+            from the aglycone match using the detected neutral losses.
 
-        Instead:
-          1. Detect all neutral losses between fragment pairs.
-          2. Search the SMALLEST fragment(s) as candidate aglycones
-             (these are most likely to match a real compound mass).
-          3. For each aglycone candidate, reconstruct the expected ladder
-             by adding back the detected neutral losses and check how many
-             of the input fragments are explained.
-          4. Also search ALL fragments with adduct_delta=0 as a fallback
-             to catch any intact glycoside in the DB.
-          5. Score = fragments explained. Rank and return.
+        Algorithm:
+          1. Detect all neutral losses between input fragment pairs.
+          2. Search the smallest N fragments WITH adduct correction to find
+             candidate aglycones in the DB.
+          3. For each aglycone candidate, propagate coverage up the ladder:
+             if fragment F is explained and F + loss_da ≈ another input
+             fragment, that fragment is also explained.
+          4. Also search ALL fragments with adduct correction as fallback
+             (catches intact glycosides stored in the DB).
+          5. Score = fragments explained / total. Rank and return.
         """
         fragments = sorted(set(round(float(m), 6) for m in fragment_masses if float(m) > 0))
         if not fragments:
@@ -318,8 +322,9 @@ class SearchEngine:
             }
 
         n_fragments = len(fragments)
+        frag_set = set(fragments)
 
-        # ── Step 1: detect neutral losses between all fragment pairs ──────────
+        # ── Step 1: detect neutral losses ─────────────────────────────────────
         detected_losses = []
         for i, f1 in enumerate(fragments):
             for f2 in fragments[i + 1:]:
@@ -334,7 +339,6 @@ class SearchEngine:
                             "ppm_error": round(abs(diff - loss_mass) / loss_mass * 1e6, 2),
                         })
 
-        # Deduplicate losses
         seen = set()
         unique_losses = []
         for l in detected_losses:
@@ -343,23 +347,20 @@ class SearchEngine:
                 seen.add(k)
                 unique_losses.append(l)
 
-        # ── Step 2: collect candidate compounds ───────────────────────────────
-        # Strategy A: search smallest fragments as potential aglycones
-        #   (use adduct_delta=0 — fragments are already neutral-ish ions,
-        #    the proton is accounted for in the observed m/z but for
-        #    fragment matching we search neutral mass directly)
-        # Strategy B: search ALL fragments with adduct_delta=0 as fallback
-        #   (catches intact glycosides stored in DB at that exact mass)
+        # ── Step 2: search candidates ──────────────────────────────────────────
+        # Pass A: search smallest 2 fragments WITH adduct correction → finds aglycones
+        # Pass B: search ALL fragments WITH adduct correction → catches intact glycosides
+        # We use adduct_delta for all searches because all observed ions carry
+        # the adduct (proton for [M+H]+), including fragment ions.
 
         candidate_map: dict[tuple, dict] = {}
         fragment_results = []
 
-        # Search all fragments with adduct_delta=0 (fragment ions, not precursors)
         for frag in fragments:
             hits = self.search_by_mass(
                 target_mass=frag,
                 tolerance=tolerance,
-                adduct_delta=0.0,          # fragments are searched as-is
+                adduct_delta=adduct_delta,
                 source_filter=source_filter,
                 max_results=top_n_per_fragment,
             )
@@ -368,74 +369,66 @@ class SearchEngine:
                 key = (h["source"], h["source_id"], h["name"], h.get("formula", ""))
                 if key not in candidate_map:
                     candidate_map[key] = {
-                        "source":    h["source"],
-                        "source_id": h["source_id"],
-                        "name":      h["name"],
-                        "formula":   h.get("formula", ""),
-                        "db_mass":   h["neutral_mass"],
+                        "source":        h["source"],
+                        "source_id":     h["source_id"],
+                        "name":          h["name"],
+                        "formula":       h.get("formula", ""),
+                        "db_mass":       h["neutral_mass"],
                         "seed_fragment": frag,
-                        "seed_ppm":  h["ppm_error"],
+                        "seed_ppm":      h["ppm_error"],
+                        "seed_mass_err": h["mass_error"],
                     }
 
-        # ── Step 3: for each candidate, score by ladder reconstruction ────────
-        # Build a set of fragment masses for fast lookup
-        frag_set = set(fragments)
-
+        # ── Step 3: score each candidate via ladder propagation ───────────────
         scored = []
 
         for key, cand in candidate_map.items():
             db_mass = cand["db_mass"]
 
-            # Find which input fragment(s) this compound directly matches
-            direct_matches = []
+            # Which input fragments directly match this compound (with adduct)?
+            # observed fragment = db_mass + adduct_delta
+            expected_ion = db_mass + adduct_delta
+            direct_matches = set()
             for frag in fragments:
-                if abs(frag - db_mass) <= tolerance:
-                    direct_matches.append(frag)
+                if abs(frag - expected_ion) <= tolerance:
+                    direct_matches.add(frag)
 
-            # Now reconstruct ladder: from each directly-matched fragment,
-            # walk UP (add losses back) and DOWN (subtract losses) to see
-            # how many other input fragments are explained
+            # Propagate coverage up and down using the detected neutral loss ladder.
+            # If fragment F is explained, then any fragment F' where
+            # |F' - F| ≈ a known loss is also explained.
             explained = set(direct_matches)
-
-            # Walk up from matched fragment by adding neutral losses back
             changed = True
             while changed:
                 changed = False
-                for explained_frag in list(explained):
+                for exp_frag in list(explained):
                     for loss in unique_losses:
-                        # If this explained fragment is the "to_mass" of a loss,
-                        # the "from_mass" should also be explained
-                        if abs(loss["to_mass"] - explained_frag) <= tolerance:
-                            candidate_higher = loss["from_mass"]
+                        # Walk UP: exp_frag is the "to_mass", check if "from_mass" is in input
+                        if abs(loss["to_mass"] - exp_frag) <= tolerance:
                             for f in fragments:
-                                if abs(f - candidate_higher) <= tolerance and f not in explained:
+                                if abs(f - loss["from_mass"]) <= tolerance and f not in explained:
                                     explained.add(f)
                                     changed = True
-                        # If this explained fragment is the "from_mass" of a loss,
-                        # the "to_mass" should also be explained
-                        if abs(loss["from_mass"] - explained_frag) <= tolerance:
-                            candidate_lower = loss["to_mass"]
+                        # Walk DOWN: exp_frag is the "from_mass", check if "to_mass" is in input
+                        if abs(loss["from_mass"] - exp_frag) <= tolerance:
                             for f in fragments:
-                                if abs(f - candidate_lower) <= tolerance and f not in explained:
+                                if abs(f - loss["to_mass"]) <= tolerance and f not in explained:
                                     explained.add(f)
                                     changed = True
 
             n_explained = len(explained)
             coverage_pct = round(n_explained / n_fragments * 100, 1)
 
-            # Build fragment_matches list for the explained fragments
+            # Build fragment_matches for the UI
             fragment_matches = []
             for f in sorted(explained, reverse=True):
-                ppm = round(abs(f - db_mass) / db_mass * 1e6, 3) if db_mass > 0 else 0.0
+                is_direct = f in direct_matches
                 fragment_matches.append({
                     "fragment_mass": f,
-                    "ppm_error":     cand["seed_ppm"] if f in direct_matches else 0.0,
-                    "mass_error":    round(abs(f - db_mass), 6) if f in direct_matches else 0.0,
+                    "ppm_error":     cand["seed_ppm"] if is_direct else 0.0,
+                    "mass_error":    cand["seed_mass_err"] if is_direct else 0.0,
                     "matched_mass":  db_mass,
-                    "match_type":    "direct" if f in direct_matches else "ladder",
+                    "match_type":    "direct" if is_direct else "ladder",
                 })
-
-            avg_ppm = cand["seed_ppm"]  # ppm of the direct DB match
 
             scored.append({
                 "source":              cand["source"],
@@ -444,7 +437,7 @@ class SearchEngine:
                 "formula":             cand["formula"],
                 "fragments_explained": n_explained,
                 "coverage_pct":        coverage_pct,
-                "avg_ppm":             avg_ppm,
+                "avg_ppm":             cand["seed_ppm"],
                 "fragment_matches":    fragment_matches,
                 "unmatched_fragments": sorted(
                     [f for f in fragments if f not in explained], reverse=True
