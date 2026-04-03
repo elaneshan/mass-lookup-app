@@ -187,7 +187,7 @@ export default function App() {
       dfs(f, [f], new Set([f]))
     }
 
-    // ✅ FIXED LADDER SCORING
+    // FIXED LADDER SCORING to be longest ladder length - 1
     const longestLadder = ladders.reduce(
       (max, l) => Math.max(max, l.length),
       0
@@ -226,7 +226,7 @@ export default function App() {
       }
     }
 
-    // ✅ UPDATED PENALTY
+    // UPDATED PENALTY for candidates with low matches
     const penalty =
       matchedMasses.size === 0 ? 5 :
       matchedMasses.size === 1 ? 4 :
