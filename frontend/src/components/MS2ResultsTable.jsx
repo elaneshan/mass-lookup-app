@@ -154,7 +154,7 @@ const matchMap = Object.fromEntries(
           <div className="text-[10px] text-gray-600 mb-1">
             {candidate.n_explained}/{candidate.n_fragments} fragments
           </div>
-          <ScoreBar pct={candidate.score_pct} />
+          <ScoreBar pct={Math.min(candidate.smart_score * 10, 100)} />
         </div>
 
         {/* Avg ppm */}
