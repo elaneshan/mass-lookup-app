@@ -44,7 +44,7 @@ function FragmentBadge({ mass, matched, ppm }) {
         ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
         : "bg-gray-800 border-gray-700 text-gray-600"}`}
     >
-      {matched ? "✓" : "✗"} {mass.toFixed(4)}
+      {matched ? "✓" : "✗"} {(mass ?? 0).toFixed(4)}
       {matched && ppm != null && (
         <span className="text-emerald-600 text-[9px]">{ppm.toFixed(1)}ppm</span>
       )}
@@ -159,7 +159,7 @@ const matchMap = Object.fromEntries(
 
         {/* Avg ppm */}
         <span className="text-[11px] font-mono text-gray-500 w-20 text-right flex-shrink-0">
-          {candidate.avg_ppm.toFixed(1)} ppm
+          {(candidate.avg_ppm ?? 0).toFixed(1)} ppm
         </span>
 
         {/* Chevron */}
@@ -263,17 +263,17 @@ const neutral_losses = Array.isArray(ms2Result.neutral_losses) ? ms2Result.neutr
           </div>
           <div className="flex flex-col gap-1.5">
             {visibleLosses.map((l, i) => (
-              <div key={i} className="flex items-center gap-2 text-[11px] font-mono">
-                <span className="text-gray-300 tabular-nums">{l.from_mass.toFixed(4)}</span>
-                <span className="text-gray-700">→</span>
-                <span className="text-gray-300 tabular-nums">{l.to_mass.toFixed(4)}</span>
-                <span className="px-2 py-px rounded bg-gray-800 border border-gray-700 text-gray-400 tabular-nums">
-                  −{l.delta} Da
-                </span>
-                <span className="text-cyan-400/80">{l.loss_name}</span>
-                <span className="text-gray-700 text-[10px]">{l.ppm_error.toFixed(1)} ppm</span>
-              </div>
-            ))}
+            <div key={i} className="flex items-center gap-2 text-[11px] font-mono">
+              <span className="text-gray-300 tabular-nums">{(l.from_mass ?? 0).toFixed(4)}</span>
+              <span className="text-gray-700">→</span>
+              <span className="text-gray-300 tabular-nums">{(l.to_mass ?? 0).toFixed(4)}</span>
+              <span className="px-2 py-px rounded bg-gray-800 border border-gray-700 text-gray-400 tabular-nums">
+                −{l.delta ?? 0} Da
+              </span>
+              <span className="text-cyan-400/80">{l.loss_name ?? "unknown"}</span>
+              <span className="text-gray-700 text-[10px]">{(l.ppm_error ?? 0).toFixed(1)} ppm</span>
+            </div>
+          ))}
           </div>
           {neutral_losses.length > 6 && (
             <button
