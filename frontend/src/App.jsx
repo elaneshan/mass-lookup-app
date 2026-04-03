@@ -36,50 +36,40 @@ export default function App() {
         const data = await res.json()
         console.log("API DATA:", data)
 
+        // FIX 1: Use backend fragment list directly (backend returns fragment_results)
         const fragments = Array.isArray(data.fragment_results)
           ? data.fragment_results.map(f => f.mass)
           : []
 
-        const ladderInfo = detectFragmentLadders(fragments)
-
+        // FIX 1: Remove all client-side rescoring — use backend scores directly
         const candidates = Array.isArray(data.candidates)
-          ? data.candidates.map(c => {
-              const normalized = {
-                ...c,
-                n_explained: c.fragments_explained ?? c.n_explained ?? 0,
-                n_fragments: data.n_fragments ?? c.n_fragments ?? 0,
-                score_pct:   c.coverage_pct ?? c.score_pct ?? 0,
-                avg_ppm:     c.avg_ppm ?? 0,
-                unmatched_fragments: Array.isArray(c.unmatched_fragments) ? c.unmatched_fragments : [],
-                fragment_matches: Array.isArray(c.fragment_matches)
-                  ? c.fragment_matches.map(m => ({
-                      fragment_mass: m.fragment_mass,
-                      ppm_error: m.ppm_error,
-                      mass_error: m.mass_error,
-                      neutral_mass: m.matched_mass ?? m.neutral_mass,
-                    }))
-                  : [],
-              }
-
-              normalized.smart_score = scoreCandidate(normalized, fragments, ladderInfo)
-              return normalized
-            })
+          ? data.candidates.map(c => ({
+              ...c,
+              // FIX 3: n_explained from fragments_explained; n_fragments from top-level data
+              n_explained:  c.fragments_explained ?? c.n_explained ?? 0,
+              n_fragments:  data.n_fragments ?? 0,
+              coverage_pct: c.coverage_pct ?? 0,
+              avg_ppm:      c.avg_ppm ?? 0,
+              unmatched_fragments: Array.isArray(c.unmatched_fragments) ? c.unmatched_fragments : [],
+              fragment_matches: Array.isArray(c.fragment_matches)
+                ? c.fragment_matches.map(m => ({
+                    fragment_mass: m.fragment_mass,
+                    ppm_error:     m.ppm_error,
+                    mass_error:    m.mass_error,
+                    neutral_mass:  m.matched_mass ?? m.neutral_mass,
+                  }))
+                : [],
+            }))
           : []
 
-        candidates.sort((a, b) => b.smart_score - a.smart_score)
+        // Sort by backend coverage_pct (backend may already sort, but be explicit)
+        candidates.sort((a, b) => b.coverage_pct - a.coverage_pct)
 
+        // FIX 2: Pass neutral_losses through as-is — backend uses loss_da, consumer reads loss_da
         const normalized = {
           fragments,
-          neutral_losses: Array.isArray(data.neutral_losses)
-            ? data.neutral_losses.map(l => ({
-                ...l,
-                delta: l.loss_da ?? l.delta,
-              }))
-            : [],
+          neutral_losses: Array.isArray(data.neutral_losses) ? data.neutral_losses : [],
           candidates,
-          ladders: ladderInfo.ladders,
-          ladderScore: ladderInfo.ladderScore,
-          ladderEdges: ladderInfo.edges,
         }
 
         setMs2Result(normalized)
@@ -144,106 +134,6 @@ export default function App() {
 
   const totalHits = results.reduce((sum, q) => sum + q.results.length, 0)
   const isMs2     = searchMode === "ms2"
-
-  function detectFragmentLadders(fragments, tolerance = 0.5) {
-    const losses = [162.0528, 324.1056]
-    const edges = []
-
-    for (let i = 0; i < fragments.length; i++) {
-      for (let j = 0; j < fragments.length; j++) {
-        if (i === j) continue
-
-        const from = fragments[i]
-        const to   = fragments[j]
-        const diff = from - to
-
-        for (const loss of losses) {
-          if (Math.abs(diff - loss) <= tolerance) {
-            edges.push({ from, to, loss })
-          }
-        }
-      }
-    }
-
-    const ladders = []
-
-    function dfs(current, path, visited) {
-      let extended = false
-
-      for (const e of edges) {
-        if (e.from === current && !visited.has(e.to)) {
-          extended = true
-          visited.add(e.to)
-          dfs(e.to, [...path, e.to], visited)
-          visited.delete(e.to)
-        }
-      }
-
-      if (!extended && path.length > 1) {
-        ladders.push(path)
-      }
-    }
-
-    for (const f of fragments) {
-      dfs(f, [f], new Set([f]))
-    }
-
-    // FIXED LADDER SCORING to be longest ladder length - 1
-    const longestLadder = ladders.reduce(
-      (max, l) => Math.max(max, l.length),
-      0
-    )
-
-    const ladderScore = Math.max(0, longestLadder - 1)
-
-    return {
-      ladders,
-      ladderScore,
-      longestLadder,
-      edges
-    }
-  }
-
-  function scoreCandidate(candidate, fragments, ladderInfo) {
-    const fragmentMatches = Array.isArray(candidate.fragment_matches)
-      ? candidate.fragment_matches
-      : []
-
-    const matchedMasses = new Set(fragmentMatches.map(m => m.fragment_mass))
-
-    const matchScore = matchedMasses.size
-
-    let ladderSupport = 0
-    for (const edge of ladderInfo.edges) {
-      if (matchedMasses.has(edge.from) && matchedMasses.has(edge.to)) {
-        ladderSupport += 1
-      }
-    }
-
-    let keyBonus = 0
-    for (const f of fragments) {
-      if (Math.abs(f - 303.05) < 0.5 && matchedMasses.has(f)) {
-        keyBonus += 1.5
-      }
-    }
-
-    // UPDATED PENALTY for candidates with low matches
-    const penalty =
-      matchedMasses.size === 0 ? 5 :
-      matchedMasses.size === 1 ? 4 :
-      0
-
-    const rawScore = matchScore + (ladderSupport * 2) + keyBonus - penalty
-
-    return Math.max(rawScore, 0)
-  }
-
-  console.log("FINAL MS2 RESULT:", {
-  fragments,
-  candidates: candidates.slice(0, 3),
-  ladders: ladderInfo?.ladders,
-  edges: ladderInfo?.edges
-})
 
   return (
       <div style={{fontFamily: "'IBM Plex Mono', 'Courier New', monospace"}}

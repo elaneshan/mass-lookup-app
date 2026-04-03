@@ -14,6 +14,7 @@ const SOURCE_URLS = {
   NPAtlas:   id => `https://www.npatlas.org/explore/compounds/${id}`,
 }
 
+// FIX 4: ScoreBar takes coverage_pct directly (0–100), not smart_score * 10
 function ScoreBar({ pct }) {
   const color = pct === 100
     ? "bg-emerald-500"
@@ -52,6 +53,7 @@ function FragmentBadge({ mass, matched, ppm }) {
   )
 }
 
+// FIX 2 + FIX 5: Read l.loss_da instead of l.delta everywhere in this component
 function NeutralLossChain({ losses, fragments }) {
   if (!losses?.length) return null
 
@@ -82,7 +84,7 @@ function NeutralLossChain({ losses, fragments }) {
             <span className="text-gray-700">→</span>
             <span className="text-gray-400">{(l.to_mass ?? 0).toFixed(4)}</span>
             <span className="px-1.5 py-px rounded bg-gray-800 text-gray-400 border border-gray-700">
-              −{l.delta} Da
+              −{l.loss_da ?? 0} Da
             </span>
             <span className="text-cyan-500/70">{l.loss_name}</span>
             <span className="text-gray-700">{(l.ppm_error ?? 0).toFixed(1)} ppm</span>
@@ -97,14 +99,14 @@ function CandidateRow({ candidate, rank, fragments, allLosses }) {
   const [open, setOpen] = useState(rank === 0)  // expand top result by default
 
   const fragmentMatches = Array.isArray(candidate.fragment_matches)
-  ? candidate.fragment_matches
-  : []
+    ? candidate.fragment_matches
+    : []
 
-const matchedSet = new Set(fragmentMatches.map(m => m.fragment_mass))
+  const matchedSet = new Set(fragmentMatches.map(m => m.fragment_mass))
 
-const matchMap = Object.fromEntries(
-  fragmentMatches.map(m => [m.fragment_mass, m.ppm_error])
-)
+  const matchMap = Object.fromEntries(
+    fragmentMatches.map(m => [m.fragment_mass, m.ppm_error])
+  )
 
   // Losses relevant to this candidate's matched fragments
   const relevantLosses = allLosses.filter(
@@ -149,12 +151,12 @@ const matchMap = Object.fromEntries(
           )}
         </div>
 
-        {/* Score */}
+        {/* Score — FIX 4: use coverage_pct directly */}
         <div className="w-40 flex-shrink-0">
           <div className="text-[10px] text-gray-600 mb-1">
             {candidate.n_explained}/{candidate.n_fragments} fragments
           </div>
-          <ScoreBar pct={Math.min(candidate.smart_score * 10, 100)} />
+          <ScoreBar pct={Math.round(candidate.coverage_pct ?? 0)} />
         </div>
 
         {/* Avg ppm */}
@@ -189,7 +191,7 @@ const matchMap = Object.fromEntries(
             </div>
           </div>
 
-          {/* Neutral loss chain */}
+          {/* Neutral loss chain — FIX 2: NeutralLossChain now reads l.loss_da */}
           <NeutralLossChain losses={relevantLosses} fragments={fragments} />
 
           {/* Source link */}
@@ -221,9 +223,9 @@ export default function MS2ResultsTable({ ms2Result }) {
 
   if (!ms2Result) return null
 
-const fragments = Array.isArray(ms2Result.fragments) ? ms2Result.fragments : []
-const candidates = Array.isArray(ms2Result.candidates) ? ms2Result.candidates : []
-const neutral_losses = Array.isArray(ms2Result.neutral_losses) ? ms2Result.neutral_losses : []
+  const fragments      = Array.isArray(ms2Result.fragments)      ? ms2Result.fragments      : []
+  const candidates     = Array.isArray(ms2Result.candidates)     ? ms2Result.candidates     : []
+  const neutral_losses = Array.isArray(ms2Result.neutral_losses) ? ms2Result.neutral_losses : []
 
   if (!candidates?.length) {
     return (
@@ -255,7 +257,7 @@ const neutral_losses = Array.isArray(ms2Result.neutral_losses) ? ms2Result.neutr
         )}
       </div>
 
-      {/* Global neutral loss summary */}
+      {/* Global neutral loss summary — FIX 2: use l.loss_da instead of l.delta */}
       {neutral_losses.length > 0 && (
         <div className="panel rounded-xl p-4">
           <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-3">
@@ -263,17 +265,17 @@ const neutral_losses = Array.isArray(ms2Result.neutral_losses) ? ms2Result.neutr
           </div>
           <div className="flex flex-col gap-1.5">
             {visibleLosses.map((l, i) => (
-            <div key={i} className="flex items-center gap-2 text-[11px] font-mono">
-              <span className="text-gray-300 tabular-nums">{(l.from_mass ?? 0).toFixed(4)}</span>
-              <span className="text-gray-700">→</span>
-              <span className="text-gray-300 tabular-nums">{(l.to_mass ?? 0).toFixed(4)}</span>
-              <span className="px-2 py-px rounded bg-gray-800 border border-gray-700 text-gray-400 tabular-nums">
-                −{l.delta ?? 0} Da
-              </span>
-              <span className="text-cyan-400/80">{l.loss_name ?? "unknown"}</span>
-              <span className="text-gray-700 text-[10px]">{(l.ppm_error ?? 0).toFixed(1)} ppm</span>
-            </div>
-          ))}
+              <div key={i} className="flex items-center gap-2 text-[11px] font-mono">
+                <span className="text-gray-300 tabular-nums">{(l.from_mass ?? 0).toFixed(4)}</span>
+                <span className="text-gray-700">→</span>
+                <span className="text-gray-300 tabular-nums">{(l.to_mass ?? 0).toFixed(4)}</span>
+                <span className="px-2 py-px rounded bg-gray-800 border border-gray-700 text-gray-400 tabular-nums">
+                  −{l.loss_da ?? 0} Da
+                </span>
+                <span className="text-cyan-400/80">{l.loss_name ?? "unknown"}</span>
+                <span className="text-gray-700 text-[10px]">{(l.ppm_error ?? 0).toFixed(1)} ppm</span>
+              </div>
+            ))}
           </div>
           {neutral_losses.length > 6 && (
             <button
