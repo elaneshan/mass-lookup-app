@@ -1,6 +1,6 @@
 import { useState } from "react"
 import SearchPanel from "./components/SearchPanel"
-import MS2ResultsTable from "./components/MS2ResultsTable"
+import MS2ResultsTable from "./components/MS2ResultsTable.jsx"
 import ResultsTable from "./components/ResultsTable"
 import FilterBar from "./components/FilterBar"
 
