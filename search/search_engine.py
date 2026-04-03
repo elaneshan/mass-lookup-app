@@ -200,6 +200,126 @@ class SearchEngine:
         } for row in rows]
 
     # ─────────────────────────────────────────────
+    # MS2 PATTERN ANALYSIS
+    # ─────────────────────────────────────────────
+
+    def search_ms2(
+        self,
+        fragment_masses: list,
+        tolerance: float = 0.02,
+        adduct_delta: float = 1.007276,
+        source_filter=None,
+        max_candidates: int = 20,
+    ) -> dict:
+        """
+        MS2 fragment pattern analysis.
+
+        For each fragment mass, search the DB for matching compounds.
+        Then score candidates by how many fragments they explain,
+        with average ppm as tiebreaker.
+
+        Returns a dict with:
+          - candidates: ranked list of compounds with fragment match details
+          - neutral_losses: detected neutral losses between fragment pairs
+          - fragment_results: per-fragment search results
+        """
+
+        NEUTRAL_LOSSES = {
+            162.0528: "hexose loss (−C6H10O5)",
+            146.0579: "deoxyhexose loss (−C6H10O4)",
+            132.0423: "pentose loss (−C5H8O4)",
+            308.1107: "hexose + deoxyhexose loss",
+            324.1056: "dihexose loss",
+            176.0477: "glucuronic acid loss",
+            80.0262:  "sulfate loss (−SO3)",
+            18.0106:  "water loss (−H2O)",
+            28.0101:  "CO loss",
+            44.0262:  "CO2 loss",
+            42.0106:  "acetyl loss",
+            120.0423: "hexose − H2O loss",
+            272.0685: "caffeic acid hexose loss",
+            206.0528: "hexose + H2O loss",
+        }
+        LOSS_TOL = 0.02  # Da tolerance for neutral loss matching
+
+        # 1. Search each fragment
+        fragment_results = []
+        for frag in fragment_masses:
+            hits = self.search_by_mass(
+                target_mass=frag,
+                tolerance=tolerance,
+                ion_mode='positive' if adduct_delta >= 0 else 'negative',
+                source_filter=source_filter,
+                max_results=50,
+                adduct_delta=adduct_delta,
+            )
+            fragment_results.append({
+                'mass': frag,
+                'hits': hits,
+            })
+
+        # 2. Detect neutral losses between all fragment pairs
+        sorted_masses = sorted(fragment_masses, reverse=True)
+        detected_losses = []
+        for i in range(len(sorted_masses)):
+            for j in range(i + 1, len(sorted_masses)):
+                diff = round(sorted_masses[i] - sorted_masses[j], 4)
+                for loss_mass, loss_name in NEUTRAL_LOSSES.items():
+                    if abs(diff - loss_mass) <= LOSS_TOL:
+                        detected_losses.append({
+                            'from_mass': sorted_masses[i],
+                            'to_mass':   sorted_masses[j],
+                            'loss_da':   diff,
+                            'loss_name': loss_name,
+                        })
+
+        # 3. Score candidates — key = (source, source_id)
+        candidate_scores = {}
+
+        for fi, frag_result in enumerate(fragment_results):
+            for hit in frag_result['hits']:
+                key = (hit['source'], hit['source_id'])
+                if key not in candidate_scores:
+                    candidate_scores[key] = {
+                        'source':      hit['source'],
+                        'source_id':   hit['source_id'],
+                        'name':        hit['name'],
+                        'formula':     hit['formula'],
+                        'inchikey':    hit['inchikey'],
+                        'exact_mass':  hit['neutral_mass'],
+                        'fragment_matches': [],
+                        'ppm_errors':  [],
+                    }
+                candidate_scores[key]['fragment_matches'].append({
+                    'fragment_mass': frag_result['mass'],
+                    'matched_mass':  hit['neutral_mass'],
+                    'mass_error':    hit['mass_error'],
+                    'ppm_error':     hit['ppm_error'],
+                })
+                candidate_scores[key]['ppm_errors'].append(abs(hit['ppm_error']))
+
+        # 4. Rank: fragments explained descending, then avg ppm ascending
+        n_frags = len(fragment_masses)
+        candidates = list(candidate_scores.values())
+        for c in candidates:
+            c['fragments_explained'] = len(c['fragment_matches'])
+            c['fragments_total']     = n_frags
+            c['coverage_pct']        = round(len(c['fragment_matches']) / n_frags * 100, 1)
+            c['avg_ppm']             = round(
+                sum(c['ppm_errors']) / len(c['ppm_errors']), 3
+            ) if c['ppm_errors'] else 999
+
+        candidates.sort(key=lambda c: (-c['fragments_explained'], c['avg_ppm']))
+        candidates = candidates[:max_candidates]
+
+        return {
+            'candidates':       candidates,
+            'neutral_losses':   detected_losses,
+            'fragment_results': fragment_results,
+            'n_fragments':      n_frags,
+        }
+
+    # ─────────────────────────────────────────────
     # NAME SEARCH
     # ─────────────────────────────────────────────
 

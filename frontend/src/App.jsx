@@ -1,5 +1,6 @@
 import { useState } from "react"
 import SearchPanel from "./components/SearchPanel"
+import MS2ResultsTable from "./components/MS2ResultsTable"
 import ResultsTable from "./components/ResultsTable"
 import FilterBar from "./components/FilterBar"
 
@@ -11,17 +12,39 @@ export default function App() {
   const [searched, setSearched]     = useState(false)
   const [expanded, setExpanded]     = useState(false)
   const [showAbout, setShowAbout]   = useState(false)
+  const [ms2Data, setMs2Data]       = useState(null)
 
   async function handleSearch(params) {
     setLoading(true)
     setError(null)
     setFilterTerm("")
     setSearched(true)
+    setMs2Data(null)
 
     try {
       let data
 
-      if (params._name) {
+      if (params._ms2) {
+        // MS2 pattern analysis
+        const res = await fetch('https://api.lucid-lcms.org/search/ms2', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fragments:      params._ms2.fragments,
+            tolerance:      params.tolerance || 0.02,
+            adduct:         params._ms2.adduct,
+            sources:        params.sources,
+            max_candidates: params.limit || 20,
+          }),
+        })
+        if (!res.ok) throw new Error(`Server error: ${res.status}`)
+        const ms2 = await res.json()
+        setMs2Data(ms2)
+        setResults([])
+        setLoading(false)
+        setSearched(true)
+        return
+      } else if (params._name) {
         // Name search
         const url = `https://api.lucid-lcms.org/search/name?query=${encodeURIComponent(params._name)}&limit=${params.limit}${params.sources ? '&sources=' + params.sources.join(',') : ''}`
         const res = await fetch(url)
@@ -173,10 +196,9 @@ export default function App() {
             <div className="grid grid-cols-2 gap-4 text-[12px]">
               <div className="flex flex-col gap-1">
                 <span className="text-gray-600 uppercase tracking-widest text-[10px]">Developed by</span>
-                <a href="https://www.linkedin.com/in/elane-shane" target="_blank" rel="noreferrer"
-                   className="text-gray-200 text-sm hover:text-cyan-400 transition-colors">
-                  Elane Shane ↗
-                </a>
+                <span className="text-gray-300 font-medium">Elane Shane</span>
+                <span className="text-gray-500">Mass Spectrometry Facility</span>
+                <span className="text-gray-500">UC Irvine</span>
               </div>
               <div className="flex flex-col gap-1">
                 <span className="text-gray-600 uppercase tracking-widest text-[10px]">Advisor</span>
@@ -203,7 +225,7 @@ export default function App() {
             </div>
 
             <div className="pt-3 border-t border-gray-800 text-[11px] text-gray-600">
-              Citation pending · MIT License
+              Citation pending — manuscript in preparation · MIT License
             </div>
           </div>
         </div>
@@ -262,7 +284,13 @@ export default function App() {
           </div>
         )}
 
-        {!loading && totalHits > 0 && (
+        {!loading && ms2Data && (
+          <div className="fade-in">
+            <MS2ResultsTable data={ms2Data} />
+          </div>
+        )}
+
+        {!loading && !ms2Data && totalHits > 0 && (
           <div className="fade-in">
             <ResultsTable queryResults={results} filterTerm={filterTerm} />
           </div>

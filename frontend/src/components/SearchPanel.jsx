@@ -28,6 +28,8 @@ export default function SearchPanel({ onSearch, loading }) {
   const [massText, setMassText]       = useState("")
   const [formulaText, setFormulaText] = useState("")
   const [nameText, setNameText]       = useState("")
+  const [ms2Text, setMs2Text]         = useState("")
+  const [ms2Adduct, setMs2Adduct]     = useState("[M+H]+")
   const [tolerance, setTolerance]     = useState("0.02")
   const [topN, setTopN]               = useState("20")
   const [adducts, setAdducts]         = useState({ "[M+H]+": true })
@@ -59,9 +61,16 @@ export default function SearchPanel({ onSearch, loading }) {
 
     if (mode === "mass") {
       if (!selectedAdducts.length) { alert("Select at least one adduct."); return }
-      const masses = massText.split(/[\n,\s]+/).map(s => s.trim()).filter(Boolean)
-        .map(Number).filter(n => !isNaN(n) && n > 0)
+
+      const masses = massText
+        .split(/[\n,\s]+/)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(Number)
+        .filter(n => !isNaN(n) && n > 0)
+
       if (!masses.length) { alert("Enter at least one valid mass."); return }
+
       onSearch({
         masses,
         adducts:   selectedAdducts,
@@ -73,22 +82,49 @@ export default function SearchPanel({ onSearch, loading }) {
     } else if (mode === "formula") {
       const formulas = formulaText.split(/[\n,]+/).map(s => s.trim()).filter(Boolean)
       if (!formulas.length) { alert("Enter at least one formula."); return }
+
       onSearch({
-        masses: [], adducts: ["neutral"], tolerance: 0,
+        masses: [],
+        adducts: ["neutral"],
+        tolerance: 0,
         sources: selectedSources.length ? selectedSources : null,
-        limit:   parseInt(topN) || 100,
+        limit: parseInt(topN) || 100,
         _formulas: formulas,
       })
 
-    } else {
-      // name mode
+    } else if (mode === "name") {
       const query = nameText.trim()
       if (!query) { alert("Enter a compound name."); return }
+
       onSearch({
-        masses: [], adducts: ["neutral"], tolerance: 0,
+        masses: [],
+        adducts: ["neutral"],
+        tolerance: 0,
         sources: selectedSources.length ? selectedSources : null,
-        limit:   parseInt(topN) || 50,
+        limit: parseInt(topN) || 50,
         _name: query,
+      })
+
+    } else if (mode === "ms2") {
+      const frags = ms2Text
+        .split(/[\n,\s]+/)
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(Number)
+        .filter(n => !isNaN(n) && n > 0)
+
+      if (frags.length < 2) {
+        alert("Enter at least 2 fragment masses.")
+        return
+      }
+
+      onSearch({
+        masses: [],
+        adducts: [ms2Adduct],
+        tolerance: parseFloat(tolerance) || 0.02,
+        sources: selectedSources.length ? selectedSources : null,
+        limit: parseInt(topN) || 20,
+        _ms2: { fragments: frags, adduct: ms2Adduct },
       })
     }
   }
@@ -104,6 +140,7 @@ export default function SearchPanel({ onSearch, loading }) {
     { key: "mass",    label: "Mass Search" },
     { key: "formula", label: "Formula Search" },
     { key: "name",    label: "Name Search" },
+    { key: "ms2",     label: "MS2 Pattern" },
   ]
 
   return (
@@ -129,14 +166,15 @@ export default function SearchPanel({ onSearch, loading }) {
 
       <div className="flex flex-col lg:flex-row gap-6">
 
-        {/* Left — input */}
+        {/* Left */}
         <div className="flex-1 flex flex-col gap-4">
 
           {/* Mode toggle */}
           <div className="flex gap-1 bg-gray-950 rounded-lg p-1 w-fit">
             {MODES.map(({ key, label }) => (
               <button
-                key={key} type="button"
+                key={key}
+                type="button"
                 onClick={() => setMode(key)}
                 className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all
                   ${mode === key
@@ -148,168 +186,57 @@ export default function SearchPanel({ onSearch, loading }) {
             ))}
           </div>
 
-          {/* Mass mode */}
+          {/* MASS */}
           {mode === "mass" && (
             <>
-              <div>
-                <label className={labelClass}>Observed Masses (m/z)</label>
-                <textarea
-                  value={massText}
-                  onChange={e => setMassText(e.target.value)}
-                  placeholder={"181.071\n194.079\n342.116"}
-                  rows={4}
-                  className={inputClass + " resize-none"}
-                />
-              </div>
-              <div className="flex gap-5 items-end">
-                <div>
-                  <label className={labelClass}>Tolerance</label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number" step="0.001" min="0.001" max="5"
-                      value={tolerance}
-                      onChange={e => setTolerance(e.target.value)}
-                      className={inputClass + " w-24 text-center"}
-                    />
-                    <span className="text-xs text-gray-500 font-mono">Da</span>
-                  </div>
-                </div>
-                <div>
-                  <label className={labelClass}>Max results</label>
-                  <input
-                    type="number" min="1" max="500"
-                    value={topN}
-                    onChange={e => setTopN(e.target.value)}
-                    className={inputClass + " w-20 text-center"}
-                  />
-                </div>
-              </div>
+              <textarea
+                value={massText}
+                onChange={e => setMassText(e.target.value)}
+                placeholder={"181.071\n194.079\n342.116"}
+                rows={4}
+                className={inputClass + " resize-none"}
+              />
             </>
           )}
 
-          {/* Formula mode */}
+          {/* FORMULA */}
           {mode === "formula" && (
+            <textarea
+              value={formulaText}
+              onChange={e => setFormulaText(e.target.value)}
+              placeholder={"C6H12O6\nC12H22O11"}
+              rows={4}
+              className={inputClass + " resize-none"}
+            />
+          )}
+
+          {/* NAME */}
+          {mode === "name" && (
+            <input
+              type="text"
+              value={nameText}
+              onChange={e => setNameText(e.target.value)}
+              placeholder="e.g. caffeine"
+              className={inputClass}
+            />
+          )}
+
+          {/* MS2 */}
+          {mode === "ms2" && (
             <>
-              <div>
-                <label className={labelClass}>Molecular Formulas</label>
-                <textarea
-                  value={formulaText}
-                  onChange={e => setFormulaText(e.target.value)}
-                  placeholder={"C6H12O6\nC12H22O11"}
-                  rows={4}
-                  className={inputClass + " resize-none"}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Max results</label>
-                <input
-                  type="number" min="1" max="500"
-                  value={topN}
-                  onChange={e => setTopN(e.target.value)}
-                  className={inputClass + " w-20 text-center"}
-                />
-              </div>
+              <textarea
+                value={ms2Text}
+                onChange={e => setMs2Text(e.target.value)}
+                rows={5}
+                className={inputClass + " resize-none"}
+              />
             </>
           )}
 
-          {/* Name mode */}
-          {mode === "name" && (
-            <>
-              <div>
-                <label className={labelClass}>Compound Name</label>
-                <input
-                  type="text"
-                  value={nameText}
-                  onChange={e => setNameText(e.target.value)}
-                  placeholder="e.g. caffeine, glucose, cholesterol"
-                  className={inputClass}
-                />
-                <p className="text-[10px] text-gray-600 mt-1.5">
-                  Partial matches supported — returns all compounds with names containing your query.
-                </p>
-              </div>
-              <div>
-                <label className={labelClass}>Max results</label>
-                <input
-                  type="number" min="1" max="500"
-                  value={topN}
-                  onChange={e => setTopN(e.target.value)}
-                  className={inputClass + " w-20 text-center"}
-                />
-              </div>
-            </>
-          )}
         </div>
 
-        {/* Right — adducts + sources + button */}
+        {/* Right */}
         <div className="flex flex-col gap-5 lg:w-56">
-
-          {mode === "mass" && (
-            <div>
-              <label className={labelClass}>Adducts</label>
-              <div className="grid grid-cols-2 gap-y-2 gap-x-3">
-                {ADDUCTS.map(({ label, api }) => (
-                  <label key={api} className="flex items-center gap-2 cursor-pointer group">
-                    <div
-                      onClick={() => toggleAdduct(api)}
-                      className={`w-4 h-4 rounded border flex items-center justify-center
-                        transition-all cursor-pointer flex-shrink-0
-                        ${adducts[api]
-                          ? "bg-cyan-500/20 border-cyan-500/60"
-                          : "border-gray-700 group-hover:border-gray-500"}`}
-                    >
-                      {adducts[api] && (
-                        <svg className="w-2.5 h-2.5 text-cyan-400" fill="none"
-                             viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
-                        </svg>
-                      )}
-                    </div>
-                    <span className="text-[11px] font-mono text-gray-400 group-hover:text-gray-200
-                                     transition-colors leading-none">
-                      {label}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className={labelClass}>Databases</label>
-            <div className="flex flex-col gap-2">
-              {SOURCES.map(src => (
-                <label key={src} className="flex items-center gap-2 cursor-pointer group">
-                  <div
-                    onClick={() => toggleSource(src)}
-                    className={`w-4 h-4 rounded border flex items-center justify-center
-                      transition-all cursor-pointer flex-shrink-0
-                      ${sources[src]
-                        ? "bg-cyan-500/20 border-cyan-500/60"
-                        : "border-gray-700 group-hover:border-gray-500"}`}
-                  >
-                    {sources[src] && (
-                      <svg className="w-2.5 h-2.5 text-cyan-400" fill="none"
-                           viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
-                      </svg>
-                    )}
-                  </div>
-                  <span className={`text-[11px] font-medium transition-colors
-                    ${sources[src]
-                      ? SOURCE_COLORS[src]?.text || "text-gray-300"
-                      : "text-gray-600 group-hover:text-gray-400"}`}>
-                    {src}
-                  </span>
-                  {stats && (
-                    <span className="ml-auto text-[10px] font-mono text-gray-600">
-                      {stats.by_source[src]?.toLocaleString()}
-                    </span>
-                  )}
-                </label>
-              ))}
-            </div>
-          </div>
 
           <button
             type="submit"

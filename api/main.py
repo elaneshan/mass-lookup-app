@@ -248,6 +248,76 @@ def search_batch(request: BatchSearchRequest):
     return query_results
 
 
+@app.post("/search/ms2", tags=["Search"])
+def search_ms2(
+    fragments:   list  = None,
+    tolerance:   float = 0.02,
+    adduct:      str   = "[M+H]+",
+    sources:     list  = None,
+    max_candidates: int = 20,
+):
+    """
+    MS2 fragment pattern analysis.
+
+    Accepts a list of fragment masses from one MS2 spectrum,
+    searches each against the database, detects neutral losses,
+    and returns candidates ranked by fragments explained + avg ppm.
+
+    Example body:
+    {
+        "fragments": [1113.29, 951.24, 789.19, 627.14, 465.10, 303.05],
+        "tolerance": 0.02,
+        "adduct": "[M+H]+",
+        "sources": ["HMDB", "ChEBI"]
+    }
+    """
+    from pydantic import BaseModel
+    raise HTTPException(status_code=501, detail="Use POST body")
+
+
+class MS2SearchRequest(BaseModel):
+    fragments:      list
+    tolerance:      float = 0.02
+    adduct:         str   = "[M+H]+"
+    sources:        list  = None
+    max_candidates: int   = 20
+
+
+@app.post("/search/ms2", tags=["Search"], include_in_schema=True)
+def search_ms2_post(request: MS2SearchRequest):
+    """
+    MS2 fragment pattern analysis.
+
+    Accepts a list of fragment masses from one MS2 spectrum,
+    searches each against the database, detects neutral losses,
+    and returns candidates ranked by fragments explained + avg ppm.
+    """
+    if len(request.fragments) < 2:
+        raise HTTPException(status_code=400,
+            detail="At least 2 fragment masses required.")
+
+    adduct_delta = ADDUCTS.get(request.adduct)
+    if adduct_delta is None:
+        raise HTTPException(status_code=400,
+            detail=f"Unknown adduct '{request.adduct}'. "
+                   f"Valid options: {list(ADDUCTS.keys())}")
+
+    try:
+        se = get_search_engine()
+        return se.search_ms2(
+            fragment_masses=request.fragments,
+            tolerance=request.tolerance,
+            adduct_delta=adduct_delta,
+            source_filter=request.sources,
+            max_candidates=request.max_candidates,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except AttributeError:
+        raise HTTPException(status_code=501,
+            detail="MS2 analysis not available in this version.")
+
+
 @app.get("/adducts", tags=["Meta"])
 def list_adducts():
     """List all supported adduct modes and their mass deltas."""
