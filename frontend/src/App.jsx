@@ -41,7 +41,6 @@ export default function App() {
 
         const ladderInfo = detectFragmentLadders(fragments)
 
-        // 🧩 UPDATED NORMALIZATION + SMART SCORE
         const candidates = Array.isArray(data.candidates)
           ? data.candidates.map(c => {
               const normalized = {
@@ -61,14 +60,11 @@ export default function App() {
                   : [],
               }
 
-              // 🔥 NEW SCORE
               normalized.smart_score = scoreCandidate(normalized, fragments, ladderInfo)
-
               return normalized
             })
           : []
 
-        // 🧩 SORT BY SMART SCORE
         candidates.sort((a, b) => b.smart_score - a.smart_score)
 
         const normalized = {
@@ -191,9 +187,20 @@ export default function App() {
       dfs(f, [f], new Set([f]))
     }
 
-    const ladderScore = ladders.reduce((sum, l) => sum + (l.length - 1), 0)
+    // ✅ FIXED LADDER SCORING
+    const longestLadder = ladders.reduce(
+      (max, l) => Math.max(max, l.length),
+      0
+    )
 
-    return { ladders, ladderScore, edges }
+    const ladderScore = Math.max(0, longestLadder - 1)
+
+    return {
+      ladders,
+      ladderScore,
+      longestLadder,
+      edges
+    }
   }
 
   function scoreCandidate(candidate, fragments, ladderInfo) {
@@ -215,11 +222,15 @@ export default function App() {
     let keyBonus = 0
     for (const f of fragments) {
       if (Math.abs(f - 303.05) < 0.5 && matchedMasses.has(f)) {
-        keyBonus += 3
+        keyBonus += 1.5
       }
     }
 
-    const penalty = matchedMasses.size <= 1 ? 2 : 0
+    // ✅ UPDATED PENALTY
+    const penalty =
+      matchedMasses.size === 0 ? 5 :
+      matchedMasses.size === 1 ? 4 :
+      0
 
     const rawScore = matchScore + (ladderSupport * 2) + keyBonus - penalty
 
@@ -230,9 +241,35 @@ export default function App() {
   const ladderScore = ms2Result?.ladderScore || 0
 
   return (
-    <div style={{ fontFamily: "'IBM Plex Mono', 'Courier New', monospace" }}
-         className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
+    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
 
+      {/* 🔥 HEADER BACK */}
+      <header className="border-b border-cyan-900/40 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="w-full px-8 py-4 flex items-center gap-5">
+          <div className="flex items-center gap-3">
+            <img src="/lucid-icon.png" className="h-8 w-auto rounded" />
+            <div>
+              <span className="text-white font-semibold text-xl">LUCID</span>
+              <span className="text-cyan-500/60 text-xs ml-3 hidden sm:inline">
+                LC-MS Unified Compound Identification Database
+              </span>
+            </div>
+          </div>
+
+          <div className="ml-auto flex items-center gap-6 text-[12px] text-gray-500">
+            <span className="hidden md:flex items-center gap-1.5">
+              HMDB · ChEBI · LipidMaps · NPAtlas
+            </span>
+            <a href="https://github.com/elaneshan/mass-lookup-app" target="_blank" rel="noreferrer">
+              GitHub ↗
+            </a>
+          </div>
+        </div>
+
+        <div className="text-[11px] text-gray-500 px-8 pb-2">
+          {ladders.length} ladders · score: {ladderScore}
+        </div>
+      </header>
 
       <div className="flex flex-col flex-1 px-4 py-5 gap-4 max-w-screen-2xl mx-auto w-full">
 
