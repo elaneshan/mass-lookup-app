@@ -288,24 +288,25 @@ class SearchEngine:
         tolerance: float = 0.02,
         source_filter=None,
         max_candidates: int = 20,
-        top_n_per_fragment: int = 30,
+        top_n_per_fragment: int = 50,
     ) -> dict:
         """
-        MS2 pattern analysis across a list of fragment masses.
+        MS2 pattern analysis — ladder-aware scoring.
 
-        Steps:
-          1. Search each fragment against the DB (reuses search_by_mass).
-          2. Compute all pairwise mass differences between fragments.
-          3. Match differences to the neutral loss table.
-          4. For each candidate compound found in any fragment search:
-               - score = number of input fragments it explains (primary)
-               - avg_ppm = average ppm error across matched fragments (tiebreaker)
-          5. Return ranked candidates + detected neutral loss ladder.
+        The key insight: fragment ions in a glycoside ladder are NOT intact
+        compounds. They are sequential neutral losses from the precursor.
+        So we should NOT search each fragment as if it were a compound mass.
 
-        All field names match what the frontend expects:
-          - neutral losses: loss_da, loss_name, from_mass, to_mass, ppm_error
-          - candidates: fragments_explained, coverage_pct, avg_ppm, fragment_matches
-          - top-level: n_fragments, fragment_results
+        Instead:
+          1. Detect all neutral losses between fragment pairs.
+          2. Search the SMALLEST fragment(s) as candidate aglycones
+             (these are most likely to match a real compound mass).
+          3. For each aglycone candidate, reconstruct the expected ladder
+             by adding back the detected neutral losses and check how many
+             of the input fragments are explained.
+          4. Also search ALL fragments with adduct_delta=0 as a fallback
+             to catch any intact glycoside in the DB.
+          5. Score = fragments explained. Rank and return.
         """
         fragments = sorted(set(round(float(m), 6) for m in fragment_masses if float(m) > 0))
         if not fragments:
@@ -316,32 +317,9 @@ class SearchEngine:
                 "n_fragments": 0,
             }
 
-        # ── Step 1: search every fragment ─────────────────────────────────────
-        # key: (source, source_id, name, formula) → list of per-fragment match dicts
-        candidate_map: dict[tuple, list] = {}
-        fragment_results = []
+        n_fragments = len(fragments)
 
-        for frag in fragments:
-            hits = self.search_by_mass(
-                target_mass=frag,
-                tolerance=tolerance,
-                adduct_delta=adduct_delta,
-                source_filter=source_filter,
-                max_results=top_n_per_fragment,
-            )
-            fragment_results.append({"mass": frag, "hits": len(hits)})
-            for h in hits:
-                key = (h["source"], h["source_id"], h["name"], h.get("formula", ""))
-                if key not in candidate_map:
-                    candidate_map[key] = []
-                candidate_map[key].append({
-                    "fragment_mass": frag,
-                    "ppm_error":     h["ppm_error"],
-                    "mass_error":    h["mass_error"],
-                    "matched_mass":  h["neutral_mass"],
-                })
-
-        # ── Step 2 & 3: pairwise mass differences → neutral losses ─────────────
+        # ── Step 1: detect neutral losses between all fragment pairs ──────────
         detected_losses = []
         for i, f1 in enumerate(fragments):
             for f2 in fragments[i + 1:]:
@@ -351,12 +329,12 @@ class SearchEngine:
                         detected_losses.append({
                             "from_mass": round(max(f1, f2), 6),
                             "to_mass":   round(min(f1, f2), 6),
-                            "loss_da":   round(diff, 4),       # frontend reads loss_da
+                            "loss_da":   round(diff, 4),
                             "loss_name": loss_name,
                             "ppm_error": round(abs(diff - loss_mass) / loss_mass * 1e6, 2),
                         })
 
-        # Deduplicate (same pair + same loss name)
+        # Deduplicate losses
         seen = set()
         unique_losses = []
         for l in detected_losses:
@@ -365,58 +343,125 @@ class SearchEngine:
                 seen.add(k)
                 unique_losses.append(l)
 
-        # ── Step 4: score each candidate ──────────────────────────────────────
-        scored = []
-        n_fragments = len(fragments)
+        # ── Step 2: collect candidate compounds ───────────────────────────────
+        # Strategy A: search smallest fragments as potential aglycones
+        #   (use adduct_delta=0 — fragments are already neutral-ish ions,
+        #    the proton is accounted for in the observed m/z but for
+        #    fragment matching we search neutral mass directly)
+        # Strategy B: search ALL fragments with adduct_delta=0 as fallback
+        #   (catches intact glycosides stored in DB at that exact mass)
 
-        for (source, source_id, name, formula), matches in candidate_map.items():
-            frags_explained = {m["fragment_mass"] for m in matches}
-            n_explained = len(frags_explained)
+        candidate_map: dict[tuple, dict] = {}
+        fragment_results = []
 
-            # Best match per fragment (lowest ppm)
-            best_per_frag = {}
-            for m in matches:
-                f = m["fragment_mass"]
-                if f not in best_per_frag or m["ppm_error"] < best_per_frag[f]["ppm_error"]:
-                    best_per_frag[f] = m
-
-            avg_ppm = round(
-                sum(m["ppm_error"] for m in best_per_frag.values()) / len(best_per_frag), 3
+        # Search all fragments with adduct_delta=0 (fragment ions, not precursors)
+        for frag in fragments:
+            hits = self.search_by_mass(
+                target_mass=frag,
+                tolerance=tolerance,
+                adduct_delta=0.0,          # fragments are searched as-is
+                source_filter=source_filter,
+                max_results=top_n_per_fragment,
             )
+            fragment_results.append({"mass": frag, "hits": len(hits)})
+            for h in hits:
+                key = (h["source"], h["source_id"], h["name"], h.get("formula", ""))
+                if key not in candidate_map:
+                    candidate_map[key] = {
+                        "source":    h["source"],
+                        "source_id": h["source_id"],
+                        "name":      h["name"],
+                        "formula":   h.get("formula", ""),
+                        "db_mass":   h["neutral_mass"],
+                        "seed_fragment": frag,
+                        "seed_ppm":  h["ppm_error"],
+                    }
+
+        # ── Step 3: for each candidate, score by ladder reconstruction ────────
+        # Build a set of fragment masses for fast lookup
+        frag_set = set(fragments)
+
+        scored = []
+
+        for key, cand in candidate_map.items():
+            db_mass = cand["db_mass"]
+
+            # Find which input fragment(s) this compound directly matches
+            direct_matches = []
+            for frag in fragments:
+                if abs(frag - db_mass) <= tolerance:
+                    direct_matches.append(frag)
+
+            # Now reconstruct ladder: from each directly-matched fragment,
+            # walk UP (add losses back) and DOWN (subtract losses) to see
+            # how many other input fragments are explained
+            explained = set(direct_matches)
+
+            # Walk up from matched fragment by adding neutral losses back
+            changed = True
+            while changed:
+                changed = False
+                for explained_frag in list(explained):
+                    for loss in unique_losses:
+                        # If this explained fragment is the "to_mass" of a loss,
+                        # the "from_mass" should also be explained
+                        if abs(loss["to_mass"] - explained_frag) <= tolerance:
+                            candidate_higher = loss["from_mass"]
+                            for f in fragments:
+                                if abs(f - candidate_higher) <= tolerance and f not in explained:
+                                    explained.add(f)
+                                    changed = True
+                        # If this explained fragment is the "from_mass" of a loss,
+                        # the "to_mass" should also be explained
+                        if abs(loss["from_mass"] - explained_frag) <= tolerance:
+                            candidate_lower = loss["to_mass"]
+                            for f in fragments:
+                                if abs(f - candidate_lower) <= tolerance and f not in explained:
+                                    explained.add(f)
+                                    changed = True
+
+            n_explained = len(explained)
+            coverage_pct = round(n_explained / n_fragments * 100, 1)
+
+            # Build fragment_matches list for the explained fragments
+            fragment_matches = []
+            for f in sorted(explained, reverse=True):
+                ppm = round(abs(f - db_mass) / db_mass * 1e6, 3) if db_mass > 0 else 0.0
+                fragment_matches.append({
+                    "fragment_mass": f,
+                    "ppm_error":     cand["seed_ppm"] if f in direct_matches else 0.0,
+                    "mass_error":    round(abs(f - db_mass), 6) if f in direct_matches else 0.0,
+                    "matched_mass":  db_mass,
+                    "match_type":    "direct" if f in direct_matches else "ladder",
+                })
+
+            avg_ppm = cand["seed_ppm"]  # ppm of the direct DB match
 
             scored.append({
-                "source":              source,
-                "source_id":           source_id,
-                "name":                name,
-                "formula":             formula,
-                "fragments_explained": n_explained,      # frontend reads fragments_explained
-                "coverage_pct":        round(n_explained / n_fragments * 100, 1),  # frontend reads coverage_pct
+                "source":              cand["source"],
+                "source_id":           cand["source_id"],
+                "name":                cand["name"],
+                "formula":             cand["formula"],
+                "fragments_explained": n_explained,
+                "coverage_pct":        coverage_pct,
                 "avg_ppm":             avg_ppm,
-                "fragment_matches": [
-                    {
-                        "fragment_mass": f,
-                        "ppm_error":     d["ppm_error"],
-                        "mass_error":    d["mass_error"],
-                        "matched_mass":  d["matched_mass"],
-                    }
-                    for f, d in sorted(best_per_frag.items(), reverse=True)
-                ],
+                "fragment_matches":    fragment_matches,
                 "unmatched_fragments": sorted(
-                    [f for f in fragments if f not in frags_explained], reverse=True
+                    [f for f in fragments if f not in explained], reverse=True
                 ),
             })
 
-        # ── Step 5: rank by fragments explained, then avg ppm ─────────────────
+        # ── Step 4: rank ──────────────────────────────────────────────────────
         scored.sort(key=lambda x: (-x["fragments_explained"], x["avg_ppm"]))
 
         return {
-            "n_fragments":      n_fragments,          # frontend reads data.n_fragments
-            "fragment_results": fragment_results,      # frontend reads data.fragment_results
+            "n_fragments":      n_fragments,
+            "fragment_results": fragment_results,
             "candidates":       scored[:max_candidates],
             "neutral_losses":   unique_losses,
         }
 
-    # ─────────────────────────────────────────────
+        # ─────────────────────────────────────────────
     # STATS
     # ─────────────────────────────────────────────
 
