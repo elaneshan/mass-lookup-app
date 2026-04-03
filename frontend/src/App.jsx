@@ -241,34 +241,143 @@ export default function App() {
   const ladderScore = ms2Result?.ladderScore || 0
 
   return (
-      <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
+      <div style={{fontFamily: "'IBM Plex Mono', 'Courier New', monospace"}}
+           className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
 
+        {/* Google Font import via style tag */}
+        <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap');
+
+        * { box-sizing: border-box; }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0a0f1a; }
+        ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #0e7490; }
+
+        .lucid-glow { box-shadow: 0 0 20px rgba(6, 182, 212, 0.15); }
+        .lucid-border { border: 1px solid rgba(6, 182, 212, 0.2); }
+
+        .result-row { transition: background 0.1s; }
+        .result-row:hover { background: rgba(6, 182, 212, 0.05) !important; }
+
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in { animation: fadeIn 0.3s ease forwards; }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        .spin { animation: spin 0.8s linear infinite; }
+      `}</style>
+
+        {/* Header */}
         <header className="border-b border-cyan-900/40 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-50">
           <div className="w-full px-8 py-4 flex items-center gap-5">
             <div className="flex items-center gap-3">
-              <img src="/lucid-icon.png" className="h-8 w-auto rounded"/>
+              <img
+                  src="/lucid-icon.png"
+                  alt="LUCID"
+                  className="h-8 w-auto rounded object-contain"
+                  onError={e => e.target.style.display = 'none'}
+              />
               <div>
-                <span className="text-white font-semibold text-xl">LUCID</span>
+              <span style={{fontFamily: "'IBM Plex Sans', sans-serif"}}
+                    className="text-white font-semibold text-xl tracking-tight">
+                LUCID
+              </span>
                 <span className="text-cyan-500/60 text-xs ml-3 hidden sm:inline">
-            LC-MS Unified Compound Identification Database
-          </span>
+                LC-MS Unified Compound Identification Database
+              </span>
               </div>
             </div>
 
             <div className="ml-auto flex items-center gap-6 text-[12px] text-gray-500">
-        <span className="hidden md:flex items-center gap-1.5">
-          HMDB · ChEBI · LipidMaps · NPAtlas
-        </span>
-              <a href="https://github.com/elaneshan/mass-lookup-app" target="_blank" rel="noreferrer">
+            <span className="hidden md:flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 inline-block"></span>
+              HMDB · ChEBI · LipidMaps · NPAtlas
+            </span>
+              <button
+                  onClick={() => setShowAbout(a => !a)}
+                  className="text-gray-500 hover:text-cyan-400 transition-colors">
+                About
+              </button>
+              <a href="https://github.com/elaneshan/mass-lookup-app"
+                 target="_blank" rel="noreferrer"
+                 className="text-gray-500 hover:text-cyan-400 transition-colors">
                 GitHub ↗
               </a>
             </div>
           </div>
-
-          <div className="text-[11px] text-gray-500 px-8 pb-2">
-            {ladders.length} ladders · score: {ladderScore}
-          </div>
         </header>
+
+        {/* About modal */}
+        {showAbout && (
+            <div
+                className="fixed inset-0 z-50 flex items-center justify-center fade-in"
+                onClick={() => setShowAbout(false)}
+            >
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"/>
+              <div
+                  className="relative z-10 bg-gray-900 border border-cyan-900/40 rounded-2xl
+                       p-8 max-w-lg w-full mx-4 shadow-2xl flex flex-col gap-5"
+                  onClick={e => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between">
+                  <h2 style={{fontFamily: "'IBM Plex Sans', sans-serif"}}
+                      className="text-white font-semibold text-lg">About LUCID</h2>
+                  <button onClick={() => setShowAbout(false)}
+                          className="text-gray-600 hover:text-gray-300 transition-colors text-lg leading-none">
+                    ✕
+                  </button>
+                </div>
+
+                <p className="text-gray-400 text-sm leading-relaxed">
+                  LUCID is an open-source LC-MS compound identification tool that unifies
+                  search across 500k+ compounds from HMDB, ChEBI, LipidMaps, NPAtlas,
+                  FooDB, and PubChem — built to accelerate metabolomics research workflows.
+                </p>
+
+                <div className="grid grid-cols-2 gap-4 text-[12px]">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-gray-600 uppercase tracking-widest text-[10px]">Developed by</span>
+                    <a href="https://www.linkedin.com/in/elane-shane" target="_blank" rel="noreferrer"
+                       className="text-gray-200 text-sm hover:text-cyan-400 transition-colors">
+                      Elane Shane ↗
+                    </a>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-gray-600 uppercase tracking-widest text-[10px]">Advisor</span>
+                    <span className="text-gray-300 font-medium">Ben Katz</span>
+                    <span className="text-gray-500">Mass Spectrometry Facility</span>
+                    <span className="text-gray-500">UC Irvine</span>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-gray-600 uppercase tracking-widest text-[10px]">Source Code</span>
+                    <a href="https://github.com/elaneshan/mass-lookup-app"
+                       target="_blank" rel="noreferrer"
+                       className="text-cyan-400 hover:text-cyan-300 transition-colors">
+                      GitHub ↗
+                    </a>
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-gray-600 uppercase tracking-widest text-[10px]">Contact</span>
+                    <a href="https://github.com/elaneshan/mass-lookup-app/issues"
+                       target="_blank" rel="noreferrer"
+                       className="text-cyan-400 hover:text-cyan-300 transition-colors">
+                      Open an issue ↗
+                    </a>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-gray-800 text-[11px] text-gray-600">
+                  Citation pending · MIT License
+                </div>
+              </div>
+            </div>
+        )}
 
         <div className="flex flex-col flex-1 px-4 py-5 gap-4 max-w-screen-2xl mx-auto w-full">
 
