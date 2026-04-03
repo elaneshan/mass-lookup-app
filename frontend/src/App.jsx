@@ -233,15 +233,6 @@ export default function App() {
     <div style={{ fontFamily: "'IBM Plex Mono', 'Courier New', monospace" }}
          className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
 
-      <header className="border-b border-cyan-900/40 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="text-[11px] font-mono text-gray-500">
-          <span className="text-cyan-400 font-medium">{ladders.length}</span> ladders detected
-        </div>
-
-        <div className="text-[11px] font-mono text-gray-500">
-          ladder score: <span className="text-cyan-400 font-medium">{ladderScore}</span>
-        </div>
-      </header>
 
       <div className="flex flex-col flex-1 px-4 py-5 gap-4 max-w-screen-2xl mx-auto w-full">
 
