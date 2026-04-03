@@ -34,12 +34,20 @@ export default function App() {
         if (!res.ok) throw new Error(`Server error: ${res.status}`)
         const data = await res.json()
 
+        const fragments = Array.isArray(data.fragment_results)
+          ? data.fragment_results.map(f => f.mass)
+          : []
+
+        const ladderInfo = detectFragmentLadders(fragments)
+
         const normalized = {
-          fragments:      (data.fragment_results || []).map(f => f.mass),
-          neutral_losses: (data.neutral_losses || []).map(l => ({
-            ...l,
-            delta: l.loss_da ?? l.delta,
-          })),
+          fragments,
+          neutral_losses: Array.isArray(data.neutral_losses)
+            ? data.neutral_losses.map(l => ({
+                ...l,
+                delta: l.loss_da ?? l.delta,
+              }))
+            : [],
           candidates: (data.candidates || []).map(c => ({
             ...c,
             n_explained:         c.fragments_explained ?? c.n_explained,
@@ -54,6 +62,10 @@ export default function App() {
               neutral_mass:  m.matched_mass ?? m.neutral_mass,
             })),
           })),
+
+          ladders: ladderInfo.ladders,
+          ladderScore: ladderInfo.ladderScore,
+          ladderEdges: ladderInfo.edges,
         }
         setMs2Result(normalized)
 
@@ -112,6 +124,61 @@ export default function App() {
   const totalHits = results.reduce((sum, q) => sum + q.results.length, 0)
   const isMs2     = searchMode === "ms2"
 
+  function detectFragmentLadders(fragments, tolerance = 0.5) {
+  const losses = [162.0528, 324.1056] // hexose, dihexose (expand later)
+
+  const edges = []
+
+  // Step 1: find valid connections
+  for (let i = 0; i < fragments.length; i++) {
+    for (let j = 0; j < fragments.length; j++) {
+      if (i === j) continue
+
+      const from = fragments[i]
+      const to   = fragments[j]
+      const diff = from - to
+
+      for (const loss of losses) {
+        if (Math.abs(diff - loss) <= tolerance) {
+          edges.push({ from, to, loss })
+        }
+      }
+    }
+  }
+
+  // Step 2: build chains (simple DFS)
+  const ladders = []
+
+  function dfs(current, path, visited) {
+    let extended = false
+
+    for (const e of edges) {
+      if (e.from === current && !visited.has(e.to)) {
+        extended = true
+        visited.add(e.to)
+        dfs(e.to, [...path, e.to], visited)
+        visited.delete(e.to)
+      }
+    }
+
+    if (!extended && path.length > 1) {
+      ladders.push(path)
+    }
+  }
+
+  for (const f of fragments) {
+    dfs(f, [f], new Set([f]))
+  }
+
+  // Step 3: score ladders
+  const ladderScore = ladders.reduce((sum, l) => sum + (l.length - 1), 0)
+
+  return { ladders, ladderScore, edges }
+}
+
+const ladders = ms2Result.ladders || []
+const ladderScore = ms2Result.ladderScore || 0
+
   return (
     <div style={{ fontFamily: "'IBM Plex Mono', 'Courier New', monospace" }}
          className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
@@ -134,11 +201,20 @@ export default function App() {
       `}</style>
 
       <header className="border-b border-cyan-900/40 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="text-[11px] font-mono text-gray-500">
+          <span className="text-cyan-400 font-medium">{ladders.length}</span> ladders detected
+        </div>
+
+        <div className="text-[11px] font-mono text-gray-500">
+          ladder score: <span className="text-cyan-400 font-medium">{ladderScore}</span>
+        </div>
         <div className="w-full px-8 py-4 flex items-center gap-5">
           <div className="flex items-center gap-3">
-            <img src="/lucid-icon.png" alt="LUCID" className="h-8 w-auto rounded object-contain" onError={e => e.target.style.display='none'} />
+            <img src="/lucid-icon.png" alt="LUCID" className="h-8 w-auto rounded object-contain"
+                 onError={e => e.target.style.display = 'none'}/>
             <div>
-              <span style={{ fontFamily: "'IBM Plex Sans', sans-serif" }} className="text-white font-semibold text-xl tracking-tight">LUCID</span>
+              <span style={{fontFamily: "'IBM Plex Sans', sans-serif"}}
+                    className="text-white font-semibold text-xl tracking-tight">LUCID</span>
               <span className="text-cyan-500/60 text-xs ml-3 hidden sm:inline">LC-MS Unified Compound Identification Database</span>
             </div>
           </div>
@@ -147,16 +223,21 @@ export default function App() {
               <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 inline-block"></span>
               HMDB · ChEBI · LipidMaps · NPAtlas
             </span>
-            <button onClick={() => setShowAbout(a => !a)} className="text-gray-500 hover:text-cyan-400 transition-colors">About</button>
-            <a href="https://github.com/elaneshan/mass-lookup-app" target="_blank" rel="noreferrer" className="text-gray-500 hover:text-cyan-400 transition-colors">GitHub ↗</a>
+            <button onClick={() => setShowAbout(a => !a)}
+                    className="text-gray-500 hover:text-cyan-400 transition-colors">About
+            </button>
+            <a href="https://github.com/elaneshan/mass-lookup-app" target="_blank" rel="noreferrer"
+               className="text-gray-500 hover:text-cyan-400 transition-colors">GitHub ↗</a>
           </div>
         </div>
       </header>
 
       {showAbout && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center fade-in" onClick={() => setShowAbout(false)}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative z-10 bg-gray-900 border border-cyan-900/40 rounded-2xl p-8 max-w-lg w-full mx-4 shadow-2xl flex flex-col gap-5" onClick={e => e.stopPropagation()}>
+          <div className="fixed inset-0 z-50 flex items-center justify-center fade-in"
+               onClick={() => setShowAbout(false)}>
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm"/>
+            <div
+                className="relative z-10 bg-gray-900 border border-cyan-900/40 rounded-2xl p-8 max-w-lg w-full mx-4 shadow-2xl flex flex-col gap-5" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h2 style={{ fontFamily: "'IBM Plex Sans', sans-serif" }} className="text-white font-semibold text-lg">About LUCID</h2>
               <button onClick={() => setShowAbout(false)} className="text-gray-600 hover:text-gray-300 transition-colors text-lg leading-none">✕</button>
