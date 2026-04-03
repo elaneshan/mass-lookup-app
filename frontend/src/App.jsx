@@ -241,51 +241,50 @@ export default function App() {
   const ladderScore = ms2Result?.ladderScore || 0
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
+      <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
 
-      {/* 🔥 HEADER BACK */}
-      <header className="border-b border-cyan-900/40 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="w-full px-8 py-4 flex items-center gap-5">
-          <div className="flex items-center gap-3">
-            <img src="/lucid-icon.png" className="h-8 w-auto rounded" />
-            <div>
-              <span className="text-white font-semibold text-xl">LUCID</span>
-              <span className="text-cyan-500/60 text-xs ml-3 hidden sm:inline">
-                LC-MS Unified Compound Identification Database
-              </span>
+        <header className="border-b border-cyan-900/40 bg-gray-950/80 backdrop-blur-sm sticky top-0 z-50">
+          <div className="w-full px-8 py-4 flex items-center gap-5">
+            <div className="flex items-center gap-3">
+              <img src="/lucid-icon.png" className="h-8 w-auto rounded"/>
+              <div>
+                <span className="text-white font-semibold text-xl">LUCID</span>
+                <span className="text-cyan-500/60 text-xs ml-3 hidden sm:inline">
+            LC-MS Unified Compound Identification Database
+          </span>
+              </div>
+            </div>
+
+            <div className="ml-auto flex items-center gap-6 text-[12px] text-gray-500">
+        <span className="hidden md:flex items-center gap-1.5">
+          HMDB · ChEBI · LipidMaps · NPAtlas
+        </span>
+              <a href="https://github.com/elaneshan/mass-lookup-app" target="_blank" rel="noreferrer">
+                GitHub ↗
+              </a>
             </div>
           </div>
 
-          <div className="ml-auto flex items-center gap-6 text-[12px] text-gray-500">
-            <span className="hidden md:flex items-center gap-1.5">
-              HMDB · ChEBI · LipidMaps · NPAtlas
-            </span>
-            <a href="https://github.com/elaneshan/mass-lookup-app" target="_blank" rel="noreferrer">
-              GitHub ↗
-            </a>
+          <div className="text-[11px] text-gray-500 px-8 pb-2">
+            {ladders.length} ladders · score: {ladderScore}
           </div>
+        </header>
+
+        <div className="flex flex-col flex-1 px-4 py-5 gap-4 max-w-screen-2xl mx-auto w-full">
+
+          {!expanded && (
+              <SearchPanel onSearch={handleSearch} loading={loading}/>
+          )}
+
+          {searched && !loading && isMs2 && ms2Result && (
+              <MS2ResultsTable ms2Result={ms2Result}/>
+          )}
+
+          {!loading && !isMs2 && totalHits > 0 && (
+              <ResultsTable queryResults={results} filterTerm={filterTerm}/>
+          )}
+
         </div>
-
-        <div className="text-[11px] text-gray-500 px-8 pb-2">
-          {ladders.length} ladders · score: {ladderScore}
-        </div>
-      </header>
-
-      <div className="flex flex-col flex-1 px-4 py-5 gap-4 max-w-screen-2xl mx-auto w-full">
-
-        {!expanded && (
-          <SearchPanel onSearch={handleSearch} loading={loading} />
-        )}
-
-        {searched && !loading && isMs2 && ms2Result && (
-          <MS2ResultsTable ms2Result={ms2Result} />
-        )}
-
-        {!loading && !isMs2 && totalHits > 0 && (
-          <ResultsTable queryResults={results} filterTerm={filterTerm} />
-        )}
-
       </div>
-    </div>
   )
 }
