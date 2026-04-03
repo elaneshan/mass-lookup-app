@@ -53,7 +53,7 @@ function FragmentBadge({ mass, matched, ppm }) {
 }
 
 function NeutralLossChain({ losses, fragments }) {
-  if (!losses.length) return null
+  if (!losses?.length) return null
 
   // Group losses by loss name for summary
   const lossCount = {}
@@ -78,14 +78,14 @@ function NeutralLossChain({ losses, fragments }) {
       <div className="flex flex-col gap-1">
         {losses.map((l, i) => (
           <div key={i} className="flex items-center gap-2 text-[10px] font-mono text-gray-500">
-            <span className="text-gray-400">{l.from_mass.toFixed(4)}</span>
+            <span className="text-gray-400">{(l.from_mass ?? 0).toFixed(4)}</span>
             <span className="text-gray-700">→</span>
-            <span className="text-gray-400">{l.to_mass.toFixed(4)}</span>
+            <span className="text-gray-400">{(l.to_mass ?? 0).toFixed(4)}</span>
             <span className="px-1.5 py-px rounded bg-gray-800 text-gray-400 border border-gray-700">
               −{l.delta} Da
             </span>
             <span className="text-cyan-500/70">{l.loss_name}</span>
-            <span className="text-gray-700">{l.ppm_error.toFixed(1)} ppm</span>
+            <span className="text-gray-700">{(l.ppm_error ?? 0).toFixed(1)} ppm</span>
           </div>
         ))}
       </div>
@@ -96,10 +96,15 @@ function NeutralLossChain({ losses, fragments }) {
 function CandidateRow({ candidate, rank, fragments, allLosses }) {
   const [open, setOpen] = useState(rank === 0)  // expand top result by default
 
-  const matchedSet = new Set(candidate.fragment_matches.map(m => m.fragment_mass))
-  const matchMap   = Object.fromEntries(
-    candidate.fragment_matches.map(m => [m.fragment_mass, m.ppm_error])
-  )
+  const fragmentMatches = Array.isArray(candidate.fragment_matches)
+  ? candidate.fragment_matches
+  : []
+
+const matchedSet = new Set(fragmentMatches.map(m => m.fragment_mass))
+
+const matchMap = Object.fromEntries(
+  fragmentMatches.map(m => [m.fragment_mass, m.ppm_error])
+)
 
   // Losses relevant to this candidate's matched fragments
   const relevantLosses = allLosses.filter(
@@ -216,9 +221,11 @@ export default function MS2ResultsTable({ ms2Result }) {
 
   if (!ms2Result) return null
 
-  const { fragments, candidates, neutral_losses } = ms2Result
+const fragments = Array.isArray(ms2Result.fragments) ? ms2Result.fragments : []
+const candidates = Array.isArray(ms2Result.candidates) ? ms2Result.candidates : []
+const neutral_losses = Array.isArray(ms2Result.neutral_losses) ? ms2Result.neutral_losses : []
 
-  if (!candidates.length) {
+  if (!candidates?.length) {
     return (
       <div className="text-center py-16 text-gray-600 text-sm">
         No candidates found for these fragment masses.
@@ -228,13 +235,15 @@ export default function MS2ResultsTable({ ms2Result }) {
 
   const visibleLosses = showAllLosses ? neutral_losses : neutral_losses.slice(0, 6)
 
+  console.log("ms2Result:", ms2Result)
+
   return (
     <div className="flex flex-col gap-5">
 
       {/* Summary header */}
       <div className="flex items-center gap-4 flex-wrap">
         <div className="text-[11px] font-mono text-gray-500">
-          <span className="text-cyan-400 font-medium">{fragments.length}</span> fragments analyzed
+          <span className="text-cyan-400 font-medium">{fragments?.length ?? 0}</span> fragments analyzed
         </div>
         <div className="text-[11px] font-mono text-gray-500">
           <span className="text-cyan-400 font-medium">{candidates.length}</span> candidates ranked
