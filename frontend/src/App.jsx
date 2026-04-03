@@ -34,6 +34,7 @@ export default function App() {
         })
         if (!res.ok) throw new Error(`Server error: ${res.status}`)
         const data = await res.json()
+        console.log("API DATA:", data)
 
         const fragments = Array.isArray(data.fragment_results)
           ? data.fragment_results.map(f => f.mass)
@@ -237,8 +238,12 @@ export default function App() {
     return Math.max(rawScore, 0)
   }
 
-  const ladders = ms2Result?.ladders || []
-  const ladderScore = ms2Result?.ladderScore || 0
+  console.log("FINAL MS2 RESULT:", {
+  fragments,
+  candidates: candidates.slice(0, 3),
+  ladders: ladderInfo?.ladders,
+  edges: ladderInfo?.edges
+})
 
   return (
       <div style={{fontFamily: "'IBM Plex Mono', 'Courier New', monospace"}}
