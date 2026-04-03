@@ -248,7 +248,7 @@ def search_batch(request: BatchSearchRequest):
     return query_results
 
 
-@app.post("/search/ms2", response_model=MS2SearchResponse, tags=["Search"])
+@app.post("/search/ms2", tags=["Search"])
 def search_ms2(request: MS2SearchRequest):
     """
     MS2 Pattern Analysis — score candidates by how many fragments they explain.
