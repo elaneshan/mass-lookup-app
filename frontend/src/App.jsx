@@ -73,6 +73,8 @@ export default function App() {
         }
 
         setMs2Result(normalized)
+        console.log("CAND0:", JSON.stringify(normalized.candidates[0], null, 2))
+        console.log("FRAGS:", normalized.fragments)
 
       } else if (params._name) {
         setSearchMode("standard")
