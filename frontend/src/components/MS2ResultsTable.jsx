@@ -63,6 +63,21 @@ function LadderAnnotationPanel({ annotation }) {
               View in {annotation.aglycone_source} ↗
             </a>
           )}
+          {/* Isobar warning */}
+          {annotation.aglycone_ambiguous && (
+            <div className="mt-1.5 rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-2 py-1.5">
+              <div className="text-[10px] text-yellow-400 font-medium mb-0.5">
+                ⚠ {annotation.aglycone_n_isobars} isobars at this mass
+              </div>
+              <div className="text-[9px] text-yellow-500/70 leading-relaxed">
+                {annotation.aglycone_isobar_names?.slice(0, 4).join(", ")}
+                {annotation.aglycone_isobar_names?.length > 4 ? " and more…" : ""}
+              </div>
+              <div className="text-[9px] text-yellow-600 mt-1">
+                Aglycone identity is ambiguous — MS3 or authentic standards required.
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-0.5">

@@ -336,7 +336,7 @@ class SearchEngine:
             best_err = float("inf")
             for loss_mass, loss_name in self.NEUTRAL_LOSSES.items():
                 err = abs(diff - loss_mass)
-                if err <= 0.02 and err < best_err:
+                if err <= self.NEUTRAL_LOSS_TOLERANCE and err < best_err:
                     best_err = err
                     best_match = (loss_mass, loss_name, round(diff, 4),
                                   round(err / loss_mass * 1e6, 2))
@@ -373,6 +373,25 @@ class SearchEngine:
             key=lambda h: (self.SOURCE_PRIORITY.get(h["source"], 99), h["ppm_error"])
         ) if aglycone_hits else None
 
+        # Detect isobars — unique compound names at the aglycone mass
+        # Group by formula to find truly distinct structures vs. just duplicate DB entries
+        isobar_formulas = {}
+        for h in aglycone_hits:
+            formula = h.get("formula", "N/A")
+            if formula not in isobar_formulas:
+                isobar_formulas[formula] = []
+            name = h["name"]
+            if name and name not in isobar_formulas[formula]:
+                isobar_formulas[formula].append(name)
+
+        # Collect representative isobar names (best name per formula, max 6 shown)
+        isobar_names = []
+        for formula, names in isobar_formulas.items():
+            isobar_names.append(names[0])
+        isobar_names = isobar_names[:6]
+        n_isobars = len(aglycone_hits)
+        aglycone_ambiguous = n_isobars > 3
+
         predicted_parent_neutral = round(frag_list[-1] - adduct_delta, 4)
 
         sugar_label_map = {
@@ -403,6 +422,9 @@ class SearchEngine:
             "aglycone_ppm":             best_aglycone["ppm_error"] if best_aglycone else None,
             "aglycone_source":          best_aglycone["source"] if best_aglycone else None,
             "aglycone_source_id":       best_aglycone["source_id"] if best_aglycone else None,
+            "aglycone_ambiguous":       aglycone_ambiguous,
+            "aglycone_n_isobars":       n_isobars,
+            "aglycone_isobar_names":    isobar_names,
             "dominant_loss":            dominant_loss,
             "dominant_loss_count":      dominant_count,
             "sequential_losses":        sequential_losses,
