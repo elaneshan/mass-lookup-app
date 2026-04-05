@@ -279,7 +279,7 @@ class SearchEngine:
         14.0157:  "methyl loss (CH2)",
     }
 
-    NEUTRAL_LOSS_TOLERANCE = 0.02  # Da
+    NEUTRAL_LOSS_TOLERANCE = 0.01  # Da
 
     def search_ms2(
         self,
@@ -387,8 +387,9 @@ class SearchEngine:
         )
 
         # Best aglycone match
-        best_aglycone = aglycone_hits[0] if aglycone_hits else None
-
+        source_priority = {"HMDB": 0, "ChEBI": 1, "LipidMaps": 2, "NPAtlas": 3}
+        best_aglycone = min(aglycone_hits,
+                            key=lambda h: source_priority.get(h["source"], 99)) if aglycone_hits else None
         # Predicted neutral mass of parent = largest fragment - adduct
         largest_frag = frag_list[-1]
         predicted_parent_neutral = round(largest_frag - adduct_delta, 4)
