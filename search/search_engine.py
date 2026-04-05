@@ -393,42 +393,21 @@ class SearchEngine:
                 if abs(frag - expected_ion) <= tolerance:
                     direct_matches.add(frag)
 
-            # Propagate coverage up and down using the detected neutral loss ladder.
-            # If fragment F is explained, then any fragment F' where
-            # |F' - F| ≈ a known loss is also explained.
-            explained = set(direct_matches)
-            changed = True
-            while changed:
-                changed = False
-                for exp_frag in list(explained):
-                    for loss in unique_losses:
-                        # Walk UP: exp_frag is the "to_mass", check if "from_mass" is in input
-                        if abs(loss["to_mass"] - exp_frag) <= tolerance:
-                            for f in fragments:
-                                if abs(f - loss["from_mass"]) <= tolerance and f not in explained:
-                                    explained.add(f)
-                                    changed = True
-                        # Walk DOWN: exp_frag is the "from_mass", check if "to_mass" is in input
-                        if abs(loss["from_mass"] - exp_frag) <= tolerance:
-                            for f in fragments:
-                                if abs(f - loss["to_mass"]) <= tolerance and f not in explained:
-                                    explained.add(f)
-                                    changed = True
+                    # Score is based ONLY on direct DB hits — no ladder propagation.
+                    # Ladder is displayed separately for annotation, not used for scoring.
+                    n_explained = len(direct_matches)
+                    coverage_pct = round(n_explained / n_fragments * 100, 1)
 
-            n_explained = len(explained)
-            coverage_pct = round(n_explained / n_fragments * 100, 1)
-
-            # Build fragment_matches for the UI
-            fragment_matches = []
-            for f in sorted(explained, reverse=True):
-                is_direct = f in direct_matches
-                fragment_matches.append({
-                    "fragment_mass": f,
-                    "ppm_error":     cand["seed_ppm"] if is_direct else 0.0,
-                    "mass_error":    cand["seed_mass_err"] if is_direct else 0.0,
-                    "matched_mass":  db_mass,
-                    "match_type":    "direct" if is_direct else "ladder",
-                })
+                    # Build fragment_matches for the UI
+                    fragment_matches = []
+                    for f in sorted(direct_matches, reverse=True):
+                        fragment_matches.append({
+                            "fragment_mass": f,
+                            "ppm_error": cand["seed_ppm"],
+                            "mass_error": cand["seed_mass_err"],
+                            "matched_mass": db_mass,
+                            "match_type": "direct",
+                        })
 
             scored.append({
                 "source":              cand["source"],
