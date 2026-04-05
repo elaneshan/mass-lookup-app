@@ -364,7 +364,7 @@ class SearchEngine:
             tolerance=tolerance,
             adduct_delta=adduct_delta,
             source_filter=source_filter,
-            max_results=20,
+            max_results=100,
         )
 
         # Pick best aglycone: source priority first, then ppm
