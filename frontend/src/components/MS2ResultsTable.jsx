@@ -14,7 +14,109 @@ const SOURCE_URLS = {
   NPAtlas:   id => `https://www.npatlas.org/explore/compounds/${id}`,
 }
 
-// FIX 4: ScoreBar takes coverage_pct directly (0–100), not smart_score * 10
+const CONFIDENCE_STYLES = {
+  high:     { bar: "bg-emerald-500", text: "text-emerald-400", border: "border-emerald-500/30", bg: "bg-emerald-500/5" },
+  moderate: { bar: "bg-yellow-500",  text: "text-yellow-400",  border: "border-yellow-500/30",  bg: "bg-yellow-500/5"  },
+  low:      { bar: "bg-orange-500",  text: "text-orange-400",  border: "border-orange-500/30",  bg: "bg-orange-500/5"  },
+  none:     { bar: "bg-gray-600",    text: "text-gray-500",    border: "border-gray-700",        bg: "bg-gray-900/40"   },
+}
+
+function LadderAnnotationPanel({ annotation }) {
+  if (!annotation) return null
+
+  const conf = CONFIDENCE_STYLES[annotation.confidence] ?? CONFIDENCE_STYLES.none
+
+  return (
+    <div className={`rounded-xl border ${conf.border} ${conf.bg} p-5 flex flex-col gap-4`}>
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="text-[10px] text-gray-500 uppercase tracking-widest">
+          Structural Prediction
+        </div>
+        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${conf.border} ${conf.text}`}>
+          {annotation.confidence} confidence
+        </span>
+      </div>
+
+      {/* Predicted structure — the main result */}
+      <div>
+        <div className={`text-lg font-semibold ${conf.text} leading-snug`}>
+          {annotation.predicted_structure}
+        </div>
+        <div className="text-[11px] text-gray-500 mt-1 font-mono">
+          Predicted neutral mass: {annotation.predicted_parent_neutral} Da
+        </div>
+      </div>
+
+      {/* Aglycone + ladder details */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-gray-600 uppercase tracking-widest">Aglycone</span>
+          <span className="text-[12px] text-gray-200 font-medium">
+            {annotation.aglycone_name ?? "not found"}
+          </span>
+          {annotation.aglycone_formula && (
+            <span className="text-[10px] font-mono text-gray-500">{annotation.aglycone_formula}</span>
+          )}
+          {annotation.aglycone_ppm != null && (
+            <span className="text-[10px] font-mono text-gray-600">{annotation.aglycone_ppm.toFixed(1)} ppm</span>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-gray-600 uppercase tracking-widest">Sugar units</span>
+          <span className="text-[12px] text-gray-200 font-medium">
+            {annotation.dominant_loss_count}× {annotation.dominant_loss
+              ? annotation.dominant_loss.replace(" loss (−C6H10O5)", "").replace(" loss", "")
+              : "—"}
+          </span>
+          <span className="text-[10px] font-mono text-gray-500">
+            {annotation.ladder_length} fragments in ladder
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10px] text-gray-600 uppercase tracking-widest">Aglycone fragment</span>
+          <span className="text-[12px] font-mono text-gray-200">{annotation.aglycone_mass} Da</span>
+          {annotation.aglycone_source && (
+            <span className="text-[10px] text-gray-500">
+              via {annotation.aglycone_source}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Sequential loss ladder visualization */}
+      {annotation.sequential_losses?.length > 0 && (
+        <div>
+          <div className="text-[10px] text-gray-600 uppercase tracking-widest mb-2">
+            Sequential ladder
+          </div>
+          <div className="flex flex-wrap items-center gap-1 font-mono text-[10px]">
+            {annotation.sequential_losses.map((sl, i) => (
+              <span key={i} className="flex items-center gap-1">
+                <span className="text-gray-300">{sl.to_mass.toFixed(2)}</span>
+                <span className={`px-1.5 py-px rounded ${conf.bg} border ${conf.border} ${conf.text}`}>
+                  +{sl.loss_da} Da
+                </span>
+                <span className="text-gray-300">{sl.from_mass.toFixed(2)}</span>
+                {i < annotation.sequential_losses.length - 1 && (
+                  <span className="text-gray-700 mx-0.5">·</span>
+                )}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="text-[10px] text-gray-600 border-t border-gray-800 pt-3">
+        Note: this is a computational prediction based on neutral loss pattern matching.
+        The exact compound may not be in the database — verify with authentic standards.
+      </div>
+    </div>
+  )
+}
+
 function ScoreBar({ pct }) {
   const color = pct === 100
     ? "bg-emerald-500"
@@ -53,11 +155,9 @@ function FragmentBadge({ mass, matched, ppm }) {
   )
 }
 
-// FIX 2 + FIX 5: Read l.loss_da instead of l.delta everywhere in this component
-function NeutralLossChain({ losses, fragments }) {
+function NeutralLossChain({ losses }) {
   if (!losses?.length) return null
 
-  // Group losses by loss name for summary
   const lossCount = {}
   for (const l of losses) {
     lossCount[l.loss_name] = (lossCount[l.loss_name] || 0) + 1
@@ -96,52 +196,40 @@ function NeutralLossChain({ losses, fragments }) {
 }
 
 function CandidateRow({ candidate, rank, fragments, allLosses }) {
-  const [open, setOpen] = useState(rank === 0)  // expand top result by default
+  const [open, setOpen] = useState(rank === 0)
 
   const fragmentMatches = Array.isArray(candidate.fragment_matches)
-    ? candidate.fragment_matches
-    : []
+    ? candidate.fragment_matches : []
 
   const matchedSet = new Set(fragmentMatches.map(m => m.fragment_mass))
+  const matchMap   = Object.fromEntries(fragmentMatches.map(m => [m.fragment_mass, m.ppm_error]))
 
-  const matchMap = Object.fromEntries(
-    fragmentMatches.map(m => [m.fragment_mass, m.ppm_error])
-  )
-
-  // Losses relevant to this candidate's matched fragments
   const relevantLosses = allLosses.filter(
     l => matchedSet.has(l.from_mass) || matchedSet.has(l.to_mass)
   )
 
   const sourceColor = SOURCE_COLORS[candidate.source] || {
-    dot: "bg-gray-400",
-    badge: "bg-gray-400/10 text-gray-400 border-gray-400/20"
+    dot: "bg-gray-400", badge: "bg-gray-400/10 text-gray-400 border-gray-400/20"
   }
   const sourceUrl = SOURCE_URLS[candidate.source]?.(candidate.source_id)
 
   return (
     <div className={`border rounded-xl overflow-hidden transition-all
-      ${rank === 0
-        ? "border-cyan-500/30 bg-cyan-500/5"
-        : "border-gray-800 bg-gray-900/40"}`}
+      ${rank === 0 ? "border-cyan-500/30 bg-cyan-500/5" : "border-gray-800 bg-gray-900/40"}`}
     >
-      {/* Header row — always visible */}
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
         className="w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-white/5 transition-colors"
       >
-        {/* Rank */}
         <span className="text-[11px] font-mono text-gray-600 w-5 flex-shrink-0">
           #{rank + 1}
         </span>
 
-        {/* Source badge */}
         <span className={`text-[10px] font-medium px-2 py-0.5 rounded border flex-shrink-0 ${sourceColor.badge}`}>
           {candidate.source}
         </span>
 
-        {/* Name + formula */}
         <div className="flex-1 min-w-0">
           <div className="text-sm text-gray-200 truncate">
             {candidate.name || <span className="text-gray-600 italic">unnamed</span>}
@@ -151,30 +239,24 @@ function CandidateRow({ candidate, rank, fragments, allLosses }) {
           )}
         </div>
 
-        {/* Score — FIX 4: use coverage_pct directly */}
         <div className="w-40 flex-shrink-0">
           <div className="text-[10px] text-gray-600 mb-1">
-            {candidate.n_explained}/{candidate.n_fragments} fragments
+            {candidate.fragments_explained}/{candidate.n_fragments ?? fragments.length} fragments
           </div>
           <ScoreBar pct={Math.round(candidate.coverage_pct ?? 0)} />
         </div>
 
-        {/* Avg ppm */}
         <span className="text-[11px] font-mono text-gray-500 w-20 text-right flex-shrink-0">
           {(candidate.avg_ppm ?? 0).toFixed(1)} ppm
         </span>
 
-        {/* Chevron */}
         <span className={`text-gray-600 transition-transform flex-shrink-0 ${open ? "rotate-180" : ""}`}>
           ▾
         </span>
       </button>
 
-      {/* Expanded detail */}
       {open && (
         <div className="px-4 pb-4 border-t border-gray-800/60">
-
-          {/* Fragment badges */}
           <div className="mt-3">
             <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-2">
               Fragment coverage
@@ -191,18 +273,12 @@ function CandidateRow({ candidate, rank, fragments, allLosses }) {
             </div>
           </div>
 
-          {/* Neutral loss chain — FIX 2: NeutralLossChain now reads l.loss_da */}
-          <NeutralLossChain losses={relevantLosses} fragments={fragments} />
+          <NeutralLossChain losses={relevantLosses} />
 
-          {/* Source link */}
           {sourceUrl && (
             <div className="mt-3 pt-3 border-t border-gray-800">
-              <a
-                href={sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[11px] text-cyan-500/70 hover:text-cyan-400 transition-colors font-mono"
-              >
+              <a href={sourceUrl} target="_blank" rel="noreferrer"
+                 className="text-[11px] text-cyan-500/70 hover:text-cyan-400 transition-colors font-mono">
                 View in {candidate.source} ↗
               </a>
               {candidate.source_id && (
@@ -223,21 +299,12 @@ export default function MS2ResultsTable({ ms2Result }) {
 
   if (!ms2Result) return null
 
-  const fragments      = Array.isArray(ms2Result.fragments)      ? ms2Result.fragments      : []
-  const candidates     = Array.isArray(ms2Result.candidates)     ? ms2Result.candidates     : []
-  const neutral_losses = Array.isArray(ms2Result.neutral_losses) ? ms2Result.neutral_losses : []
-
-  if (!candidates?.length) {
-    return (
-      <div className="text-center py-16 text-gray-600 text-sm">
-        No candidates found for these fragment masses.
-      </div>
-    )
-  }
+  const fragments         = Array.isArray(ms2Result.fragments)      ? ms2Result.fragments      : []
+  const candidates        = Array.isArray(ms2Result.candidates)     ? ms2Result.candidates     : []
+  const neutral_losses    = Array.isArray(ms2Result.neutral_losses) ? ms2Result.neutral_losses : []
+  const ladder_annotation = ms2Result.ladder_annotation ?? null
 
   const visibleLosses = showAllLosses ? neutral_losses : neutral_losses.slice(0, 6)
-
-  console.log("ms2Result:", ms2Result)
 
   return (
     <div className="flex flex-col gap-5">
@@ -245,7 +312,7 @@ export default function MS2ResultsTable({ ms2Result }) {
       {/* Summary header */}
       <div className="flex items-center gap-4 flex-wrap">
         <div className="text-[11px] font-mono text-gray-500">
-          <span className="text-cyan-400 font-medium">{fragments?.length ?? 0}</span> fragments analyzed
+          <span className="text-cyan-400 font-medium">{fragments.length}</span> fragments analyzed
         </div>
         <div className="text-[11px] font-mono text-gray-500">
           <span className="text-cyan-400 font-medium">{candidates.length}</span> candidates ranked
@@ -257,7 +324,10 @@ export default function MS2ResultsTable({ ms2Result }) {
         )}
       </div>
 
-      {/* Global neutral loss summary — FIX 2: use l.loss_da instead of l.delta */}
+      {/* ── Structural annotation panel — the main new feature ── */}
+      <LadderAnnotationPanel annotation={ladder_annotation} />
+
+      {/* Neutral loss ladder */}
       {neutral_losses.length > 0 && (
         <div className="panel rounded-xl p-4">
           <div className="text-[10px] text-gray-500 uppercase tracking-widest mb-3">
@@ -290,17 +360,26 @@ export default function MS2ResultsTable({ ms2Result }) {
       )}
 
       {/* Ranked candidates */}
-      <div className="flex flex-col gap-2">
-        {candidates.map((c, i) => (
-          <CandidateRow
-            key={`${c.source}-${c.source_id}-${i}`}
-            candidate={c}
-            rank={i}
-            fragments={fragments}
-            allLosses={neutral_losses}
-          />
-        ))}
-      </div>
+      {candidates.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          <div className="text-[10px] text-gray-600 uppercase tracking-widest">
+            Database candidates (direct mass matches only)
+          </div>
+          {candidates.map((c, i) => (
+            <CandidateRow
+              key={`${c.source}-${c.source_id}-${i}`}
+              candidate={c}
+              rank={i}
+              fragments={fragments}
+              allLosses={neutral_losses}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-600 text-sm">
+          No database candidates found for these fragment masses.
+        </div>
+      )}
 
     </div>
   )
