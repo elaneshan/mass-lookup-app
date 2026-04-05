@@ -279,7 +279,7 @@ class SearchEngine:
         14.0157:  "methyl loss (CH2)",
     }
 
-    NEUTRAL_LOSS_TOLERANCE = 0.02  # Da
+    NEUTRAL_LOSS_TOLERANCE = 0.01  # Da
 
     def search_ms2(
         self,
