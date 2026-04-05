@@ -70,6 +70,7 @@ export default function App() {
           fragments,
           neutral_losses: Array.isArray(data.neutral_losses) ? data.neutral_losses : [],
           candidates,
+          ladder_annotation: data.ladder_annotation ?? null,
         }
 
         setMs2Result(normalized)
