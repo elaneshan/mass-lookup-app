@@ -56,13 +56,12 @@ class SearchEngine:
         adduct_delta: Optional[float] = None,
     ) -> List[Dict]:
 
-        # Use exact adduct delta if provided, otherwise fall back to generic ion mode offset
         if adduct_delta is not None:
             neutral_mass = target_mass - adduct_delta
         else:
             neutral_mass = target_mass - ION_ADJUSTMENTS.get(ion_mode, 0.0)
-        lower        = neutral_mass - tolerance
-        upper        = neutral_mass + tolerance
+        lower = neutral_mass - tolerance
+        upper = neutral_mass + tolerance
 
         query = '''
             SELECT source_database, source_id, name, formula,
@@ -113,7 +112,6 @@ class SearchEngine:
         all_results = []
 
         for query_id, (observed_mass, adduct_delta, adduct_label) in enumerate(mass_adduct_pairs):
-            # Use exact adduct delta directly
             neutral_mass = observed_mass - adduct_delta
             lower        = neutral_mass - tolerance
             upper        = neutral_mass + tolerance
@@ -209,10 +207,6 @@ class SearchEngine:
         source_filter: Optional[List[str]] = None,
         max_results: int = 50
     ) -> List[Dict]:
-        """
-        Case-insensitive substring search on compound name.
-        Returns compounds whose name contains the query string.
-        """
         query_str = f'%{query.strip()}%'
 
         sql = '''
@@ -227,7 +221,6 @@ class SearchEngine:
             sql += f' AND source_database IN ({",".join("?"*len(source_filter))})'
             params.extend(source_filter)
 
-        # Order by name length ascending so exact/short matches float to top
         sql += ' ORDER BY LENGTH(name) ASC'
         sql += f' LIMIT {int(max_results)}'
 
@@ -247,7 +240,6 @@ class SearchEngine:
     # MS2 PATTERN ANALYSIS
     # ─────────────────────────────────────────────
 
-    # Common neutral losses in flavonoid / anthocyanin MS2 (Da, exact monoisotopic)
     NEUTRAL_LOSSES = {
         162.0528: "hexose loss (−C6H10O5)",
         146.0579: "deoxyhexose loss",
@@ -256,12 +248,10 @@ class SearchEngine:
         308.1107: "hexose+deoxyhexose loss",
         324.1056: "dihexose loss",
         294.0634: "dihexose loss (alt)",
-        # Acyl / ester losses
         120.0211: "caffeic acid loss",
         178.0528: "caffeoyl loss",
         164.0477: "coumaroyl loss",
         150.0685: "feruloyl loss",
-        # Aglycone / ring losses
         302.0426: "quercetin aglycone",
         286.0477: "kaempferol aglycone",
         316.0583: "isorhamnetin aglycone",
@@ -269,7 +259,6 @@ class SearchEngine:
         300.0270: "delphinidin aglycone",
         270.0528: "apigenin aglycone",
         272.0685: "naringenin aglycone",
-        # Small molecules
         18.0106:  "water loss",
         28.0101:  "CO loss",
         44.0262:  "CO2 loss",
@@ -280,6 +269,9 @@ class SearchEngine:
     }
 
     NEUTRAL_LOSS_TOLERANCE = 0.01  # Da
+
+    # Source priority for aglycone selection — prefer well-curated DBs
+    SOURCE_PRIORITY = {"HMDB": 0, "ChEBI": 1, "LipidMaps": 2, "NPAtlas": 3}
 
     def search_ms2(
         self,
@@ -293,16 +285,8 @@ class SearchEngine:
         """
         MS2 pattern analysis with structural annotation.
 
-        Core insight: for glycoside ladders, the parent compound often isn't
-        in the DB. Instead we:
-          1. Detect the neutral loss ladder pattern across all fragment pairs.
-          2. Identify the dominant loss type (hexose, deoxyhexose, etc.)
-             and count how many rungs the ladder has.
-          3. Search the SMALLEST fragment as a candidate aglycone (with adduct
-             correction — it's an [M+H]+ ion like any other).
-          4. Score DB candidates by direct fragment hits only.
-          5. Return a ladder_annotation block describing the predicted
-             compound class even if the exact molecule isn't in the DB.
+        Returns a ladder_annotation block identifying the aglycone and
+        sugar series, plus ranked DB candidates for supporting evidence.
         """
         fragments = sorted(set(round(float(m), 6) for m in fragment_masses if float(m) > 0))
         if not fragments:
@@ -316,7 +300,7 @@ class SearchEngine:
 
         n_fragments = len(fragments)
 
-        # ── Step 1: detect neutral losses ─────────────────────────────────────
+        # ── Step 1: detect all pairwise neutral losses ─────────────────────────
         detected_losses = []
         for i, f1 in enumerate(fragments):
             for f2 in fragments[i + 1:]:
@@ -340,14 +324,13 @@ class SearchEngine:
                 seen.add(k)
                 unique_losses.append(l)
 
-        # ── Step 2: build the ladder annotation ───────────────────────────────
-        # Find the dominant sequential loss (consecutive fragment pairs only)
-        # A "sequential" loss connects two adjacent fragments in the sorted list
+        # ── Step 2: build ladder annotation ───────────────────────────────────
         frag_list = sorted(fragments)
+
+        # Sequential losses between adjacent fragments only
         sequential_losses = []
         for i in range(len(frag_list) - 1):
-            lo = frag_list[i]
-            hi = frag_list[i + 1]
+            lo, hi = frag_list[i], frag_list[i + 1]
             diff = hi - lo
             best_match = None
             best_err = float("inf")
@@ -367,49 +350,43 @@ class SearchEngine:
                     "ppm_error": best_match[3],
                 })
 
-        # Count dominant loss type among sequential losses
+        # Dominant loss type
         loss_counts = {}
         for sl in sequential_losses:
-            key = sl["loss_name"]
-            loss_counts[key] = loss_counts.get(key, 0) + 1
-
+            loss_counts[sl["loss_name"]] = loss_counts.get(sl["loss_name"], 0) + 1
         dominant_loss = max(loss_counts, key=loss_counts.get) if loss_counts else None
         dominant_count = loss_counts.get(dominant_loss, 0) if dominant_loss else 0
 
-        # Search smallest fragment as aglycone candidate
+        # Search smallest fragment as aglycone
         aglycone_frag = frag_list[0]
         aglycone_hits = self.search_by_mass(
             target_mass=aglycone_frag,
             tolerance=tolerance,
             adduct_delta=adduct_delta,
             source_filter=source_filter,
-            max_results=10,
+            max_results=20,
         )
 
-        # Best aglycone match
-        source_priority = {"HMDB": 0, "ChEBI": 1, "LipidMaps": 2, "NPAtlas": 3}
-        best_aglycone = min(aglycone_hits,
-                            key=lambda h: source_priority.get(h["source"], 99)) if aglycone_hits else None
-        # Predicted neutral mass of parent = largest fragment - adduct
-        largest_frag = frag_list[-1]
-        predicted_parent_neutral = round(largest_frag - adduct_delta, 4)
+        # Pick best aglycone: source priority first, then ppm
+        best_aglycone = min(
+            aglycone_hits,
+            key=lambda h: (self.SOURCE_PRIORITY.get(h["source"], 99), h["ppm_error"])
+        ) if aglycone_hits else None
 
-        # Build human-readable structural prediction
+        predicted_parent_neutral = round(frag_list[-1] - adduct_delta, 4)
+
+        sugar_label_map = {
+            "hexose loss (−C6H10O5)": "hexose",
+            "deoxyhexose loss":       "deoxyhexose",
+            "pentose loss":           "pentose",
+            "glucuronic acid loss":   "glucuronic acid",
+            "dihexose loss":          "dihexose",
+        }
+
         if best_aglycone and dominant_loss and dominant_count >= 2:
-            sugar_count = dominant_count  # number of sequential losses = number of sugars
-            # Map loss name to short sugar label
-            sugar_label_map = {
-                "hexose loss (−C6H10O5)": "hexose",
-                "deoxyhexose loss": "deoxyhexose",
-                "pentose loss": "pentose",
-                "glucuronic acid loss": "glucuronic acid",
-                "dihexose loss": "dihexose",
-            }
             sugar_label = sugar_label_map.get(dominant_loss, dominant_loss.replace(" loss", ""))
-            prediction = (
-                f"{best_aglycone['name']} + {sugar_count}× {sugar_label}"
-            )
-            confidence = "high" if dominant_count >= 3 else "moderate"
+            prediction  = f"{best_aglycone['name']} + {dominant_count}× {sugar_label}"
+            confidence  = "high" if dominant_count >= 3 else "moderate"
         elif best_aglycone:
             prediction = f"{best_aglycone['name']} glycoside (sugar type unclear)"
             confidence = "low"
@@ -464,7 +441,7 @@ class SearchEngine:
         scored = []
 
         for key, cand in candidate_map.items():
-            db_mass = cand["db_mass"]
+            db_mass      = cand["db_mass"]
             expected_ion = db_mass + adduct_delta
 
             direct_matches = set()
@@ -472,18 +449,19 @@ class SearchEngine:
                 if abs(frag - expected_ion) <= tolerance:
                     direct_matches.add(frag)
 
-            n_explained = len(direct_matches)
+            n_explained  = len(direct_matches)
             coverage_pct = round(n_explained / n_fragments * 100, 1)
 
-            fragment_matches = []
-            for f in sorted(direct_matches, reverse=True):
-                fragment_matches.append({
+            fragment_matches = [
+                {
                     "fragment_mass": f,
                     "ppm_error":     cand["seed_ppm"],
                     "mass_error":    cand["seed_mass_err"],
                     "matched_mass":  db_mass,
                     "match_type":    "direct",
-                })
+                }
+                for f in sorted(direct_matches, reverse=True)
+            ]
 
             scored.append({
                 "source":              cand["source"],
@@ -502,14 +480,14 @@ class SearchEngine:
         scored.sort(key=lambda x: (-x["fragments_explained"], x["avg_ppm"]))
 
         return {
-            "n_fragments":        n_fragments,
-            "fragment_results":   fragment_results,
-            "candidates":         scored[:max_candidates],
-            "neutral_losses":     unique_losses,
-            "ladder_annotation":  ladder_annotation,
+            "n_fragments":       n_fragments,
+            "fragment_results":  fragment_results,
+            "candidates":        scored[:max_candidates],
+            "neutral_losses":    unique_losses,
+            "ladder_annotation": ladder_annotation,
         }
 
-            # ─────────────────────────────────────────────
+    # ─────────────────────────────────────────────
     # STATS
     # ─────────────────────────────────────────────
 
