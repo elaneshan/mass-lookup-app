@@ -419,7 +419,7 @@ class SearchEngine:
                 "avg_ppm":             cand["seed_ppm"],
                 "fragment_matches":    fragment_matches,
                 "unmatched_fragments": sorted(
-                    [f for f in fragments if f not in explained], reverse=True
+                    [f for f in fragments if f not in direct_matches], reverse=True
                 ),
             })
 
