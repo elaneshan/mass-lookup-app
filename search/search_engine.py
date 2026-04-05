@@ -336,7 +336,7 @@ class SearchEngine:
             best_err = float("inf")
             for loss_mass, loss_name in self.NEUTRAL_LOSSES.items():
                 err = abs(diff - loss_mass)
-                if err <= self.NEUTRAL_LOSS_TOLERANCE and err < best_err:
+                if err <= 0.02 and err < best_err:
                     best_err = err
                     best_match = (loss_mass, loss_name, round(diff, 4),
                                   round(err / loss_mass * 1e6, 2))
