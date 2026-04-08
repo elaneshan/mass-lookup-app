@@ -5,7 +5,7 @@ Pydantic schemas for request validation and response serialization.
 """
 
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 
 # ─────────────────────────────────────────────
@@ -59,19 +59,51 @@ class BatchSearchRequest(BaseModel):
     limit:     int         = Field(default=20, gt=0, le=500)
 
 
-
-# ── Add these to api/models.py ────────────────────────────────────────────────
-# (paste alongside the existing model definitions)
-
 from pydantic import BaseModel
 from typing import List, Optional
 
 class MS2SearchRequest(BaseModel):
-    fragment_masses: List[float]
-    adduct:          str   = "[M+H]+"
-    tolerance:       float = 0.02
-    sources:         Optional[List[str]] = None
-    limit:           int   = 20
+    fragment_masses: List[float] = Field(
+        ...,
+        min_length=1,
+        max_length=50,
+        description="List of fragment m/z values"
+    )
+
+    adduct: Literal[
+        "[M+H]+",
+        "[M+Na]+",
+        "[M+K]+",
+        "[M+NH4]+",
+        "[M]+",
+        "[M-H]-",
+        "[M+Cl]-",
+        "[M-2H]-",
+        "[M-2H]2-",
+        "neutral",
+    ] = Field(
+        "[M+H]+",
+        description="Adduct type"
+    )
+
+    tolerance: float = Field(
+        0.02,
+        gt=0,
+        le=0.1,
+        description="Mass tolerance in Da"
+    )
+
+    sources: Optional[List[str]] = Field(
+        None,
+        description="Optional source database filter"
+    )
+
+    limit: int = Field(
+        20,
+        gt=1,
+        le=100,
+        description="Max candidates to return"
+    )
 
 class MS2FragmentMatch(BaseModel):
     fragment_mass: float

@@ -274,6 +274,7 @@ def search_ms2(request: MS2SearchRequest):
     result = se.search_ms2(
         fragment_masses=request.fragment_masses,
         adduct_delta=adduct_delta,
+        adduct=request.adduct,
         tolerance=request.tolerance,
         source_filter=request.sources or None,
         max_candidates=request.limit,
