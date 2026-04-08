@@ -123,7 +123,7 @@ export default function SearchPanel({ onSearch, loading }) {
     { key: "mass",    label: "Mass Search" },
     { key: "formula", label: "Formula Search" },
     { key: "name",    label: "Name Search" },
-    { key: "ms2",     label: "MS² Pattern" },
+    { key: "ms2",     label: "Flavonoid MS² Pattern" },
   ]
 
   return (
