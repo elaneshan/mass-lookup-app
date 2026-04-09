@@ -342,7 +342,7 @@ class SearchEngine:
 
             err = abs(observed_mz - ref_mz)
             if err <= self.AGLYCONE_TOLERANCE:
-                ppm = round(err / ref_mz * 1e6, 2)
+                ppm = ppm = err / ref_mz * 1e6
 
                 matches.append({
                     **ag,

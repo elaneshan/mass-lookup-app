@@ -113,7 +113,7 @@ function LadderAnnotationPanel({ annotation }) {
                     {ag.name}
                   </span>
                   <span className="text-[10px] font-mono text-gray-600">
-                    {ag.ppm_error.toFixed(1)} ppm
+                    {ag.ppm_error.toFixed(3)} ppm
                   </span>
                 </div>
               ))}
