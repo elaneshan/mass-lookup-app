@@ -303,36 +303,52 @@ class SearchEngine:
     # Source priority for DB fallback
     SOURCE_PRIORITY = {"HMDB": 0, "ChEBI": 1, "LipidMaps": 2, "NPAtlas": 3}
 
-    def _match_aglycone(self, observed_mz: float, adduct: str) -> dict:
+    def _match_aglycone(self, observed_mz: float, adduct: str) -> list:
         """
-        Match observed smallest fragment against the flavonoid aglycone table.
-
-        In positive mode:
-          - Anthocyanins are detected as [M]+ (no proton added)
-          - Flavonols are detected as [M+H]+
-          Both appear at the same m/z for isobaric pairs (e.g. delphinidin/quercetin at 303.05)
-
-        In negative mode:
-          - Both classes detected as [M-H]-
-          Delphinidin [M-H]- = 301.0354, quercetin [M-H]- = 301.0354 (still isobaric)
-          But other pairs ARE distinguishable:
-          cyanidin/kaempferol [M-H]- = 285.0405 (isobaric)
-          myricetin [M-H]- = 317.0303 vs petunidin/isorhamnetin [M-H]- = 315.051 (distinguishable)
-
-        Returns list of matching aglycones with ppm error.
+        Match observed smallest fragment against flavonoid aglycone table,
+        with adduct-class compatibility filtering.
         """
+
+        # ── Determine ion mode key ─────────────────────────────
         is_negative = adduct in ("[M-H]-", "[M+Cl]-", "[M+FA-H]-", "[M-2H]-", "[M-2H]2-")
         mz_key = "negative_mz" if is_negative else "positive_mz"
 
+        # ── Allowed class by adduct ────────────────────────────
+        def is_valid_class(ag_class: str) -> bool:
+            if adduct in ("[M]+",):
+                return ag_class == "anthocyanin"
+
+            if adduct in ("[M+H]+", "[M+Na]+", "[M+K]+", "[M+NH4]+"):
+                return ag_class == "flavonol"
+
+            if adduct in ("[M-H]-", "[M+Cl]-", "[M+FA-H]-"):
+                return ag_class == "flavonol"
+
+            if adduct in ("[M-2H]-", "[M-2H]2-"):
+                return ag_class == "anthocyanin"
+
+            return True  # fallback (shouldn't happen)
+
+        # ── Matching ───────────────────────────────────────────
         matches = []
+
         for ag in self.FLAVONOID_AGLYCONES:
+            if not is_valid_class(ag["class"]):
+                continue  # 🔥 THIS IS THE KEY LINE
+
             ref_mz = ag[mz_key]
             if ref_mz is None:
                 continue
+
             err = abs(observed_mz - ref_mz)
             if err <= self.AGLYCONE_TOLERANCE:
                 ppm = round(err / ref_mz * 1e6, 2)
-                matches.append({**ag, "ppm_error": ppm, "observed_mz": observed_mz})
+
+                matches.append({
+                    **ag,
+                    "ppm_error": ppm,
+                    "observed_mz": observed_mz
+                })
 
         matches.sort(key=lambda x: x["ppm_error"])
         return matches
