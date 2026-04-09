@@ -93,7 +93,7 @@ class SearchEngine:
             'neutral_mass':  round(row['exact_mass'], 6),
             'observed_mass': round(target_mass, 6),
             'mass_error':    round(row['mass_error'], 6),
-            'ppm_error':     round(row['ppm_error'], 3),
+            'ppm_error':     row['ppm_error'],
             'ion_mode':      ion_mode,
         } for row in rows]
 
@@ -149,7 +149,7 @@ class SearchEngine:
                     'neutral_mass':  round(neutral_mass, 6),
                     'observed_mass': round(observed_mass, 6),
                     'mass_error':    round(row['mass_error'], 6),
-                    'ppm_error':     round(row['ppm_error'], 3),
+                    'ppm_error':     row['ppm_error'],
                     'ion_mode':      'positive' if adduct_delta > 0 else
                                      'negative' if adduct_delta < 0 else 'neutral',
                 })
@@ -342,7 +342,7 @@ class SearchEngine:
 
             err = abs(observed_mz - ref_mz)
             if err <= self.AGLYCONE_TOLERANCE:
-                ppm = ppm = err / ref_mz * 1e6
+                ppm = err / ref_mz * 1e6
 
                 matches.append({
                     **ag,
