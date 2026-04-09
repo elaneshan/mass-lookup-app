@@ -1,4 +1,10 @@
 import { useState } from "react"
+const formatPPM = (ppm) => {
+  if (ppm === null || ppm === undefined) return ""
+  if (ppm === 0) return "0.000"
+  if (ppm < 0.001) return ppm.toExponential(2)
+  return ppm.toFixed(3)
+}
 
 const SOURCE_URLS = {
   HMDB:      id => `https://hmdb.ca/metabolites/${id}`,
@@ -113,7 +119,7 @@ function LadderAnnotationPanel({ annotation }) {
                     {ag.name}
                   </span>
                   <span className="text-[10px] font-mono text-gray-600">
-                    {ag.ppm_error.toFixed(3)} ppm
+                    {formatPPM(ag.ppm_error)} ppm
                   </span>
                 </div>
               ))}
@@ -153,7 +159,7 @@ function LadderAnnotationPanel({ annotation }) {
             <span className="text-[10px] text-gray-600 uppercase tracking-widest">Aglycone fragment</span>
             <span className="text-[12px] font-mono text-gray-200">{annotation.aglycone_mass} Da</span>
             {annotation.aglycone_ppm != null && (
-              <span className="text-[10px] font-mono text-gray-600">{annotation.aglycone_ppm.toFixed(1)} ppm error</span>
+              <span className="text-[10px] font-mono text-gray-600">{formatPPM(annotation.aglycone_ppm)} ppm error</span>
             )}
           </div>
           <div className="flex flex-col gap-0.5">
