@@ -1,9 +1,11 @@
 import { useState } from "react"
 const formatPPM = (ppm) => {
-  if (ppm === null || ppm === undefined) return ""
-  if (ppm === 0) return "0.000"
-  if (ppm < 0.001) return ppm.toExponential(2)
-  return ppm.toFixed(3)
+  if (ppm == null) return "—"
+
+  if (ppm < 0.001) return ppm.toExponential(2)   // e.g. 1.81e-4
+  if (ppm < 0.01)  return ppm.toFixed(5)
+  if (ppm < 1)     return ppm.toFixed(4)
+  return ppm.toFixed(2)
 }
 
 const SOURCE_URLS = {

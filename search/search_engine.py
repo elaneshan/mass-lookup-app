@@ -310,7 +310,7 @@ class SearchEngine:
         Match observed smallest fragment against flavonoid aglycone table,
         with adduct-class compatibility filtering.
         """
-        print("🔥 ENTERING _match_aglycone", observed_mz, adduct)
+        print(" ENTERING _match_aglycone", observed_mz, adduct)
         # ── Determine ion mode key ─────────────────────────────
         is_negative = adduct in ("[M-H]-", "[M+Cl]-", "[M+FA-H]-", "[M-2H]-", "[M-2H]2-")
         mz_key = "negative_mz" if is_negative else "positive_mz"
