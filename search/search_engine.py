@@ -82,6 +82,8 @@ class SearchEngine:
             query += f' LIMIT {int(max_results)}'
 
         rows = self.conn.execute(query, params).fetchall()
+        for r in rows[:3]:
+            print("DEBUG SQL:", dict(r))
 
         return [{
             'source':        row['source_database'],
@@ -343,6 +345,12 @@ class SearchEngine:
             err = abs(observed_mz - ref_mz)
             if err <= self.AGLYCONE_TOLERANCE:
                 ppm = err / ref_mz * 1e6
+                print("DEBUG AG:", {
+                    "observed": observed_mz,
+                    "ref": ref_mz,
+                    "err": err,
+                    "ppm": ppm
+                })
 
                 matches.append({
                     **ag,
