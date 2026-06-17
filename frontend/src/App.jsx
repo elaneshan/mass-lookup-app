@@ -139,7 +139,7 @@ export default function App() {
 
       // ── Name search branch ────────────────────────────────────
       } else if (params._name) {
-        setSearchMode("standard") // this is the reg search with mass
+        setSearchMode("standard") // this is the reg search with name
 
         // GET request with query string — name search is read-only so GET is appropriate
         const url = `https://api.lucid-lcms.org/search/name?query=${encodeURIComponent(params._name)}&limit=${params.limit}${params.sources ? '&sources=' + params.sources.join(',') : ''}`
