@@ -25,6 +25,7 @@ const SOURCE_BADGE = {
   FooDB:     "bg-yellow-500/15 text-yellow-400 border border-yellow-500/25",
   "MS-DIAL": "bg-pink-500/15 text-pink-400 border border-pink-500/25",
   PubChem:   "bg-gray-500/15 text-gray-400 border border-gray-500/25",
+  Aglycones: "bg-pink-500/15 text-pink-400 border border-pink-500/25",
 }
 
 /**

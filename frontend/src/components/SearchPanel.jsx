@@ -14,13 +14,14 @@ const ADDUCTS = [
   { label: "Neutral",   api: "neutral" },
 ]
 
-const SOURCES = ["HMDB", "ChEBI", "LipidMaps", "NPAtlas"]
+const SOURCES = ["HMDB", "ChEBI", "LipidMaps", "NPAtlas", "Aglycones"]
 
 const SOURCE_COLORS = {
   HMDB:      { dot: "bg-blue-400",    text: "text-blue-400" },
   ChEBI:     { dot: "bg-emerald-400", text: "text-emerald-400" },
   LipidMaps: { dot: "bg-orange-400",  text: "text-orange-400" },
   NPAtlas:   { dot: "bg-purple-400",  text: "text-purple-400" },
+  Aglycones: { dot: "bg-pink-400",    text: "text-pink-400" },
 }
 
 export default function SearchPanel({ onSearch, loading }) {
