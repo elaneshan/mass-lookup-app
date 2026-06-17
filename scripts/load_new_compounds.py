@@ -26,11 +26,9 @@ from pathlib import Path
 
 DB_FILE = "database/compounds.db"  # adjust path if running from a different cwd
 
-# Input CSVs - update paths to wherever you've saved them
 CSV_AGLYCONES = "data/raw/Sugar Backbones  - aglycones.csv"
-CSV_ANTHO_LM = "data/raw/Sugar Backbones  - anthocyanidins lipid maps_.csv"
-CSV_FLAV_LM = "data/raw/Sugar Backbones  - flavoniods lipid maps_.csv"
-
+CSV_ANTHO_LM = "data/raw/Sugar Backbones  - Anthocyanidins Lipid Maps_.csv"
+CSV_FLAV_LM = "data/raw/Sugar Backbones  - Flavonoids Lipid Maps_.csv"
 
 def normalize_formula(formula: str) -> str:
     """Same normalization logic as in the search engine, kept in sync."""
