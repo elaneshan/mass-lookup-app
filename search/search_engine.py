@@ -486,41 +486,106 @@ class SearchEngine:
     # Format:
     # loss_mass: (specific_name, category)
     NEUTRAL_LOSSES = {
-        # Sugars
-        162.0528: ("hexose",                  "Hexose"),
-        146.0579: ("rhamnoside",              "Deoxyhexose"),
-        132.0422: ("pentose",                 "Pentose"),
-        324.1056: ("sophoroside",             "Hexose Disaccharide"),
-        308.1107: ("rutinoside",              "Hexose Deoxyhexose"),
+        # ── Sugars ──────────────────────────────────────────────────────
+        132.0422: ("pentose", "Pentose"),
+        146.0579: ("rhamnoside", "Deoxyhexose"),
+        162.0528: ("hexose", "Hexose"),
+        308.1107: ("rutinoside", "Hexose Deoxyhexose"),
+        324.1056: ("sophoroside", "Hexose Disaccharide"),
 
-        # Acylated sugars
-        204.0634: ("acetyl glucoside",        "Acyl Hexose"),
-        188.0684: ("acetyl rhamnoside",       "Acyl Deoxyhexose"),
-        308.0896: ("coumaroyl glucoside",     "Acyl Hexose"),
-        292.0947: ("coumaroyl rhamnoside",    "Acyl Deoxyhexose"),
-        246.0739: ("diacetyl glucoside",      "Acyl Hexose"),
-        324.0845: ("caffeoyl hexose",         "Acyl Hexose"),
-        248.0532: ("malonyl glucoside",       "Acyl Hexose"),  # NEW
-        176.0320: ("glucuronide",             "Uronic Acid"),
+        # ── Acylated sugars and conjugates ──────────────────────────────
+        176.0320: ("glucuronide", "Uronic Acid"),
+        188.0684: ("acetyl rhamnoside", "Acyl Deoxyhexose"),
+        204.0634: ("acetyl glucoside", "Acyl Hexose"),
+        232.0583: ("malonyl rhamnoside", "Acyl Deoxyhexose"),
+        246.0739: ("diacetyl glucoside", "Acyl Hexose"),
+        248.0532: ("malonyl glucoside", "Acyl Hexose"),
+        250.0841: ("benzoyl rhamnoside", "Acyl Deoxyhexose"),
+        262.0689: ("succinyl glucoside", "Acyl Hexose"),
+        264.0998: ("glucoside vinylphenol", "Phenolic Hexose"),
+        266.0790: ("benzoyl glucoside", "Acyl Hexose"),
+        272.0896: ("glucoside catechol", "Phenolic Hexose"),
+        278.0790: ("coumaroyl xyloside", "Acyl Pentose"),
+        280.0947: ("glucoside vinylcatechol", "Phenolic Hexose"),
+        292.0947: ("coumaroyl rhamnoside", "Acyl Deoxyhexose"),
+        292.1158: ("dirhamnoside", "Deoxyhexose Disaccharide"),
+        294.0739: ("caffeoyl xyloside", "Acyl Pentose"),
+        294.0951: ("xylosylglucoside", "Pentose Hexose Disaccharide"),
+        294.1103: ("glucoside vinylguaiacol", "Phenolic Hexose"),
+        308.0896: ("coumaroyl glucoside", "Acyl Hexose"),
+        314.0637: ("galloyl glucoside", "Acyl Hexose"),
+        322.0900: ("glucuronosyl rhamnoside", "Uronic Deoxyhexose"),
+        324.0845: ("caffeoyl hexose", "Acyl Hexose"),
+        334.0536: ("dimalonyl glucoside", "Acyl Hexose"),
+        338.0849: ("glucuronosyl glucoside", "Uronic Hexose"),
+        350.1213: ("acetylrutinoside", "Acyl Hexose Deoxyhexose Disaccharide"),
+        352.1158: ("sinapoyl aldehyde glucoside", "Acyl Hexose"),
+        366.1162: ("acyl dihexose", "Acyl Hexose Disaccharide"),
+        368.1107: ("sinapoyl glucoside", "Acyl Hexose"),
+        380.0954: ("malonyl xylosyl glucoside", "Acyl Pentose Hexose Disaccharide"),
+        412.1369: ("benzoyl rutinoside", "Acyl Hexose Deoxyhexose Disaccharide"),
+        424.1581: ("xylosyl dirhamnoside", "Pentose Deoxyhexose Trisaccharide"),
+        428.1319: ("benzoyl sophoroside", "Acyl Hexose Disaccharide"),
+        438.1526: ("coumaroyl dirhamnoside", "Acyl Deoxyhexose Disaccharide"),
+        440.1530: ("xylosylrutinoside", "Pentose Hexose Deoxyhexose Trisaccharide"),
+        454.1475: ("coumaroyl rutinoside", "Acyl Hexose Deoxyhexose Disaccharide"),
+        470.1424: ("caffeoyl rutinoside", "Acyl Hexose Deoxyhexose Disaccharide"),
+        484.1581: ("feruloyl rutinoside", "Acyl Hexose Deoxyhexose Disaccharide"),
+        486.1373: ("caffeoyl sophoroside", "Acyl Hexose Disaccharide"),
+        486.1585: ("sophorotriose", "Hexose Trisaccharide"),
+        488.1741: ("glucosyl rutinoside", "Hexose Deoxyhexose Trisaccharide"),
+        574.1686: ("disinapoyl glucoside", "Acyl Hexose"),
 
-        # Acyl groups
-        42.0105:  ("acetyl",                  "Acyl Moiety"),
-        102.0105: ("benzoyl",                 "Acyl Moiety"),
-        162.0317: ("caffeoyl",                "Acyl Moiety"),
-        130.0418: ("cinnamyl",                "Acyl Moiety"),
-        146.0368: ("coumaroyl",               "Acyl Moiety"),
-        176.0473: ("feruloyl",                "Acyl Moiety"),
-        152.0109: ("galloyl",                 "Acyl Moiety"),
-        86.0368:  ("hydroxyisobutyryl",       "Acyl Moiety"),
-        86.0003:  ("malonyl",                 "Acyl Moiety"),
-        166.0993: ("menthiafoloyl",           "Acyl Moiety"),
-        160.0524: ("methoxycinnamyl",         "Acyl Moiety"),
-        84.0575:  ("methylbutyryl/pentanoyl", "Acyl Moiety"),
-        166.0266: ("methylgalloyl",           "Acyl Moiety"),
-        128.0473: ("methylglutaryl",          "Acyl Moiety"),
-        71.9847:  ("oxalyl",                  "Acyl Moiety"),
-        206.0579: ("sinapoyl",                "Acyl Moiety"),
-        150.0317: ("vanilloyl",               "Acyl Moiety"),
+        # ── Acyl moieties ────────────────────────────────────────────────
+        42.0105: ("acetyl", "Acyl Moiety"),
+        56.0262: ("propionyl", "Acyl Moiety"),
+        70.0055: ("pyruvate", "Acyl Moiety"),
+        71.9847: ("oxalyl", "Acyl Moiety"),
+        84.0575: ("methylbutyryl/pentanoyl", "Acyl Moiety"),
+        86.0003: ("malonyl", "Acyl Moiety"),
+        86.0368: ("hydroxyisobutyryl", "Acyl Moiety"),
+        100.0160: ("succinyl", "Acyl Moiety"),
+        104.0262: ("benzoyl", "Acyl Moiety"),
+        110.0731: ("cyclohexanecarboxylic acid", "Acyl Moiety"),
+        116.0109: ("malic acid", "Acyl Moiety"),
+        128.0473: ("methylglutaryl", "Acyl Moiety"),
+        130.0418: ("cinnamyl", "Acyl Moiety"),
+        132.0059: ("tartaric acid", "Acyl Moiety"),
+        136.0160: ("gentisyl/protocatechuic acid", "Acyl Moiety"),
+        139.0997: ("tranexamic acid", "Acyl Moiety"),
+        146.0368: ("coumaroyl", "Acyl Moiety"),
+        148.0524: ("phloretic acid", "Acyl Moiety"),
+        150.0317: ("vanilloyl", "Acyl Moiety"),
+        152.0109: ("galloyl/phloroglucinic acid", "Acyl Moiety"),
+        156.0423: ("shikimic acid", "Acyl Moiety"),
+        160.0524: ("methoxycinnamyl", "Acyl Moiety"),
+        162.0317: ("caffeoyl", "Acyl Moiety"),
+        166.0266: ("methylgalloyl", "Acyl Moiety"),
+        166.0993: ("menthiafoloyl", "Acyl Moiety"),
+        166.1357: ("bucyclic acid", "Acyl Moiety"),
+        174.1594: ("quinic acid", "Acyl Moiety"),
+        176.0473: ("feruloyl", "Acyl Moiety"),
+        180.0424: ("syringic acid", "Acyl Moiety"),
+        206.0579: ("sinapoyl", "Acyl Moiety"),
+        208.0371: ("chorismic acid", "Acyl Moiety"),
+        218.0579: ("acetyl ferulic acid", "Acyl Moiety"),
+        246.1256: ("abscisic acid", "Acyl Moiety"),
+        278.1154: ("rosin", "Acyl Moiety"),
+        326.0638: ("theogallin", "Acyl Moiety"),
+        350.1002: ("feruloylquinic acid", "Acyl Moiety"),
+
+        # ── Phenolic moieties ────────────────────────────────────────────
+        92.0262: ("catechol", "Phenolic Moiety"),
+        102.0470: ("4-vinylphenol", "Phenolic Moiety"),
+        108.0211: ("pyrogalloyl", "Phenolic Moiety"),
+        118.0419: ("4-vinylcatechol", "Phenolic Moiety"),
+        120.0211: ("syloxy", "Phenolic Moiety"),
+        132.0575: ("4-vinylguaiacol", "Phenolic Moiety"),
+        209.0602: ("resveratrol", "Phenolic Moiety"),
+        283.9957: ("ellagic acid", "Phenolic Moiety"),
+        320.0896: ("coumaroylquinic acid", "Phenolic Moiety"),
+        336.0845: ("chlorogenic acid / caffeoyl quinic acid", "Phenolic Moiety"),
+        350.1154: ("curcumin", "Phenolic Moiety"),
     }
 
     # Allowed error tolerance for neutral loss matching
@@ -533,17 +598,54 @@ class SearchEngine:
     #
     # These serve as reference fingerprints for identification.
     FLAVONOID_AGLYCONES = [
+        # ── Anthocyanins ─────────────────────────────────────────────────
         {"name": "pelargonidin", "class": "anthocyanin", "positive_mz": 271.0601, "negative_mz": 269.0455},
-        {"name": "cyanidin",     "class": "anthocyanin", "positive_mz": 287.0550, "negative_mz": 285.0405},
-        {"name": "delphinidin",  "class": "anthocyanin", "positive_mz": 303.0499, "negative_mz": 301.0354},
-        {"name": "peonidin",     "class": "anthocyanin", "positive_mz": 301.0707, "negative_mz": 299.0561},
-        {"name": "petunidin",    "class": "anthocyanin", "positive_mz": 317.0656, "negative_mz": 315.0510},
-        {"name": "malvidin",     "class": "anthocyanin", "positive_mz": 331.0812, "negative_mz": 329.0667},
+        {"name": "cyanidin", "class": "anthocyanin", "positive_mz": 287.0550, "negative_mz": 285.0405},
+        {"name": "delphinidin", "class": "anthocyanin", "positive_mz": 303.0499, "negative_mz": 301.0354},
+        {"name": "peonidin", "class": "anthocyanin", "positive_mz": 301.0707, "negative_mz": 299.0561},
+        {"name": "petunidin", "class": "anthocyanin", "positive_mz": 317.0656, "negative_mz": 315.0510},
+        {"name": "malvidin", "class": "anthocyanin", "positive_mz": 331.0812, "negative_mz": 329.0667},
+        # rosinidin skipped — no [M+H]+ or [M-H]- values in source table
 
-        {"name": "kaempferol",   "class": "flavonol", "positive_mz": 287.0550, "negative_mz": 285.0405},
-        {"name": "quercetin",    "class": "flavonol", "positive_mz": 303.0499, "negative_mz": 301.0354},
-        {"name": "myricetin",    "class": "flavonol", "positive_mz": 319.0448, "negative_mz": 317.0303},
+        # ── Flavonols ─────────────────────────────────────────────────────
+        {"name": "kaempferol", "class": "flavonol", "positive_mz": 287.0550, "negative_mz": 285.0405},
+        {"name": "quercetin", "class": "flavonol", "positive_mz": 303.0499, "negative_mz": 301.0354},
+        {"name": "myricetin", "class": "flavonol", "positive_mz": 319.0448, "negative_mz": 317.0303},
         {"name": "isorhamnetin", "class": "flavonol", "positive_mz": 317.0656, "negative_mz": 315.0510},
+        {"name": "3-hydroxyflavone", "class": "flavonol", "positive_mz": 239.0703, "negative_mz": 237.0557},
+        {"name": "azaleatin", "class": "flavonol", "positive_mz": 317.0655, "negative_mz": 315.0503},
+        {"name": "kaempferide", "class": "flavonol", "positive_mz": 301.0707, "negative_mz": 299.0562},
+        {"name": "natsudaidain", "class": "flavonol", "positive_mz": 419.1337, "negative_mz": 417.1192},
+        {"name": "pachypodol", "class": "flavonol", "positive_mz": 345.0969, "negative_mz": 343.0824},
+        {"name": "rhamnazin", "class": "flavonol", "positive_mz": 331.0812, "negative_mz": 329.0667},
+
+        # ── Flavones ──────────────────────────────────────────────────────
+        {"name": "chrysin", "class": "flavone", "positive_mz": 255.0652, "negative_mz": 253.0507},
+        {"name": "tectochrysin", "class": "flavone", "positive_mz": 269.0808, "negative_mz": 267.0663},
+        {"name": "apigenin", "class": "flavone", "positive_mz": 271.0601, "negative_mz": 269.0456},
+        {"name": "acacetin", "class": "flavone", "positive_mz": 285.0758, "negative_mz": 283.0613},
+        {"name": "liquiritigenin", "class": "flavone", "positive_mz": 257.0808, "negative_mz": 255.0663},
+        {"name": "naringenin", "class": "flavone", "positive_mz": 273.0758, "negative_mz": 271.0613},
+        {"name": "pectolinarigenin", "class": "flavone", "positive_mz": 315.0863, "negative_mz": 313.0718},
+        {"name": "zapotin", "class": "flavone", "positive_mz": 343.1176, "negative_mz": 341.1031},
+        {"name": "sinensetin", "class": "flavone", "positive_mz": 373.1282, "negative_mz": 371.1137},
+        {"name": "nobiletin", "class": "flavone", "positive_mz": 403.1387, "negative_mz": 401.1242},
+
+        # ── Flavanones ────────────────────────────────────────────────────
+        {"name": "blumeatin", "class": "flavanone", "positive_mz": 303.0863, "negative_mz": 301.0718},
+        {"name": "eriodictyol", "class": "flavanone", "positive_mz": 289.0707, "negative_mz": 287.0562},
+        {"name": "sakuranetin", "class": "flavanone", "positive_mz": 287.0914, "negative_mz": 285.0769},
+
+        # ── Flavanonols ───────────────────────────────────────────────────
+        # taxifolin: source had formula typos (C1513O7+, C1511O7-), corrected to C15H12O7
+        {"name": "taxifolin", "class": "flavanonol", "positive_mz": 305.0656, "negative_mz": 303.0511},
+
+        # ── Flavan-4-ols ──────────────────────────────────────────────────
+        {"name": "apiforol", "class": "flavan-4ol", "positive_mz": 275.0914, "negative_mz": 273.0769},
+        {"name": "luteoforol", "class": "flavan-4ol", "positive_mz": 291.0863, "negative_mz": 289.0718},
+
+        # ── Flavan-3-ols ──────────────────────────────────────────────────
+        {"name": "gallocatechin", "class": "flavan-3-ol", "positive_mz": 307.0812, "negative_mz": 305.0667},
     ]
 
     # Allowed error tolerance for aglycone matching
